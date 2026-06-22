@@ -28,12 +28,13 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Name, email and password are required' });
     }
 
-    const existing = await UserService.findOne({ email });
+    const normalizedEmail = String(email).toLowerCase().trim();
+    const existing = await UserService.findOne({ email: normalizedEmail });
     if (existing) return res.status(409).json({ message: 'Email already registered' });
 
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await UserService.create({
-      name, email, phone: phone || '', passwordHash,
+      name, email: normalizedEmail, phone: phone || '', passwordHash,
       role: 'customer', addresses: [], preferences: {},
     });
 
@@ -55,7 +56,8 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
-    const user = await UserService.findOne({ email });
+    const normalizedEmail = String(email).toLowerCase().trim();
+    const user = await UserService.findOne({ email: normalizedEmail });
     if (!user || !user.passwordHash) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }

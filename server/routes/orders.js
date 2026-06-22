@@ -3,6 +3,7 @@ const router   = express.Router();
 const FirestoreService = require('../services/FirestoreService');
 const { protect, adminOnly } = require('../middleware/auth');
 const { calculateServerDeliveryFee } = require('../utils/deliveryZones');
+const { revalidateOrderItems } = require('../utils/orderPricing');
 
 // Initialize Africa's Talking SDK
 const AfricasTalking = require('africastalking')({
@@ -243,9 +244,18 @@ router.get('/coupons/validate/:code', async (req, res) => {
 // POST /api/orders (AUTHENTICATED USER)
 router.post('/', protect, async (req, res) => {
   try {
-    const { shippingAddress, subtotal, couponCode } = req.body;
-    const verifiedDelivery = calculateServerDeliveryFee(shippingAddress?.city, subtotal);
+    const { shippingAddress, couponCode, items } = req.body;
     const userId = req.user._id || req.user.id;
+
+    // Re-price every item against the live product catalog — the client's
+    // submitted price/subtotal is never trusted from here on.
+    const pricing = await revalidateOrderItems(items);
+    if (!pricing.valid) {
+      return res.status(pricing.status).json({ message: pricing.message, priceChanges: pricing.priceChanges });
+    }
+    const { items: trustedItems, subtotal } = pricing;
+
+    const verifiedDelivery = calculateServerDeliveryFee(shippingAddress?.city, subtotal);
 
     let discountAmount = 0;
     let appliedCoupon = null;
@@ -291,6 +301,8 @@ router.post('/', protect, async (req, res) => {
 
     const order = await OrderService.create({
       ...req.body,
+      items:          trustedItems,
+      subtotal,
       shippingFee:    verifiedDelivery.fee,
       discountAmount,
       couponCode:     appliedCoupon || null,
@@ -324,7 +336,16 @@ router.post('/', protect, async (req, res) => {
 // POST /api/orders/guest (GUEST USERS)
 router.post('/guest', async (req, res) => {
   try {
-    const { guestInfo, shippingAddress, subtotal, couponCode, ...rest } = req.body;
+    const { guestInfo, shippingAddress, couponCode, items, ...rest } = req.body;
+
+    // Re-price every item against the live product catalog — the client's
+    // submitted price/subtotal is never trusted from here on.
+    const pricing = await revalidateOrderItems(items);
+    if (!pricing.valid) {
+      return res.status(pricing.status).json({ message: pricing.message, priceChanges: pricing.priceChanges });
+    }
+    const { items: trustedItems, subtotal } = pricing;
+
     const verifiedDelivery = calculateServerDeliveryFee(shippingAddress?.city, subtotal);
 
     let guestUser = null;
@@ -388,6 +409,7 @@ router.post('/guest', async (req, res) => {
 
     const order = await OrderService.create({
       ...rest,
+      items:         trustedItems,
       subtotal,
       shippingAddress,
       discountAmount,
