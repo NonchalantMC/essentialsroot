@@ -1,4 +1,5 @@
 // client/src/utils/deliveryZones.js
+// Keep this file in sync with server/utils/deliveryZones.js
 
 export const DELIVERY_ZONES = {
   zone1: {
@@ -7,15 +8,15 @@ export const DELIVERY_ZONES = {
   },
   zone2: {
     fee: 7000, label: "Zone 2 — Near Suburbs", km: "7–12 km", eta: "1–3 hrs",
-    areas: ["kisaasi","wandegeya","naalya","najjera","mulago","makerere","nsambya","katwe","buziga","mengo","namirembe","bwaise","nakulabye","muyenga","kabalagala","rubaga","lubaga","kawempe","makindye","kyaliwajjala","kira town","lungujja","ggaba","muyonyo","bweyogerere","nateete"]
+    areas: ["kisaasi","wandegeya","naalya","najjera","mulago","makerere","nsambya","katwe","buziga","mengo","namirembe","bwaise","nakulabye","muyenga","kabalagala","rubaga","lubaga","kawempe","makindye","kyaliwajjala","kira town","lungujja","ggaba","muyonyo","bweyogerere","nateete","bunga","kansanga"]
   },
   zone3: {
     fee: 10000, label: "Zone 3 — Mid Distance", km: "13–15 km", eta: "2–4 hrs",
-    areas: ["seeta","namugongo","busega","nsangi"]
+    areas: ["seeta","namugongo","busega","nsangi","lubowa","zana","namasuba","kitende"]
   },
   zone4: {
     fee: 12000, label: "Zone 4 — Outer Suburbs", km: "14–19 km", eta: "3–5 hrs",
-    areas: ["kira","mukono","kasangati"]
+    areas: ["kira","mukono","kasangati","bulindo","mulawa"]
   },
   zone5: {
     fee: 15000, label: "Zone 5 — Far / Peri-urban", km: "20+ km", eta: "Same/next day",
@@ -29,30 +30,34 @@ export function getDeliveryFee(cityInput, subtotal) {
   }
 
   const q = cityInput.toLowerCase().trim();
-  let matchedZone = null;
-  let matchedKey = null;
+  const qWords = q.split(/\s+/);
+
+  // Best-match: find the longest area name that genuinely matches the input.
+  // Prevents short area names (e.g. "kira") from matching longer ones
+  // (e.g. "kira town") and landing in the wrong zone.
+  let bestMatch = null;
 
   for (const [key, zone] of Object.entries(DELIVERY_ZONES)) {
-    if (zone.areas.some(a => q.includes(a) || a.includes(q.split(" ")[0]))) {
-      matchedZone = zone;
-      matchedKey = key;
-      break;
+    for (const area of zone.areas) {
+      const isMatch = q === area || q.includes(area) || qWords.includes(area);
+      if (isMatch && (!bestMatch || area.length > bestMatch.area.length)) {
+        bestMatch = { zone, key, area };
+      }
     }
   }
 
-  // Fallback if area text matches nothing yet
-  if (!matchedZone) {
+  if (!bestMatch) {
     return { fee: 7000, label: "Zone 2 (Unlisted Area Fallback)", eta: "1–3 hrs", isEstimated: true };
   }
 
-  // Evaluate Free Delivery Thresholds
+  const { zone, key } = bestMatch;
+
   if (subtotal >= 200000) {
-    return { fee: 0, label: `${matchedZone.label} (Free Delivery Promo 🎉)`, eta: matchedZone.eta, isEstimated: false };
-  } 
-  
-  if (subtotal >= 100000 && (matchedKey === 'zone1' || matchedKey === 'zone2')) {
-    return { fee: 0, label: `${matchedZone.label} (Free Delivery Promo 🎉)`, eta: matchedZone.eta, isEstimated: false };
+    return { fee: 0, label: `${zone.label} (Free Delivery Promo 🎉)`, eta: zone.eta, isEstimated: false };
+  }
+  if (subtotal >= 100000 && (key === 'zone1' || key === 'zone2')) {
+    return { fee: 0, label: `${zone.label} (Free Delivery Promo 🎉)`, eta: zone.eta, isEstimated: false };
   }
 
-  return { fee: matchedZone.fee, label: matchedZone.label, eta: matchedZone.eta, isEstimated: false };
+  return { fee: zone.fee, label: zone.label, eta: zone.eta, isEstimated: false };
 }

@@ -142,3 +142,9 @@
     border: 1px solid rgba(255,255,255,.3);
   }
 }
+
+/* ── Shimmer loading animation (hero image placeholders) ── */
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

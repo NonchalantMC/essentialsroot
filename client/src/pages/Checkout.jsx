@@ -15,7 +15,6 @@ const schema = z.object({
   firstName: z.string().min(1, 'Required'),
   lastName:  z.string().min(1, 'Required'),
   phone:     z.string().min(9, 'Valid phone required'),
-  street:    z.string().min(3, 'Required'),
   city:      z.string().min(2, 'Please enter your specific area/suburb'),
 });
 
@@ -215,7 +214,6 @@ export default function Checkout() {
         shippingAddress: {
           name:     `${formData.firstName} ${formData.lastName}`,
           phone:    formData.phone,
-          street:   formData.street,
           city:     formData.city, 
           district: '',
           country:  'Uganda',
@@ -223,7 +221,6 @@ export default function Checkout() {
         billingAddress: {
           name:     `${formData.firstName} ${formData.lastName}`,
           phone:    formData.phone,
-          street:   formData.street,
           city:     formData.city,
           district: '',
           country:  'Uganda',
@@ -355,12 +352,7 @@ export default function Checkout() {
                     <h2 className="font-semibold text-base mb-5 pb-3 border-b" style={{ color:'var(--ink)', borderColor:'var(--bone)' }}>2. Delivery Address</h2>
                     <div className="space-y-4">
                       <div>
-                        <label className={labelCls}>Street / Plot / Apartment Number</label>
-                        <input {...register('street')} className={inputCls} placeholder="Kampala Road, Plot 23" />
-                        {errors.street && <p className="text-xs mt-1" style={{ color:'#e05252' }}>{errors.street.message}</p>}
-                      </div>
-                      <div>
-                        <label className={labelCls}>Town / Suburb (Kampala / Wakiso Area)</label>
+                        <label className={labelCls}>Town</label>
                         <input {...register('city')} className={inputCls} placeholder="e.g. Ntinda, Kisaasi, Seeta, Entebbe" />
                         {errors.city && <p className="text-xs mt-1" style={{ color:'#e05252' }}>{errors.city.message}</p>}
                       </div>

@@ -14,10 +14,8 @@ const DEFAULT_HERO = {
   stat1: { value: '500+', label: 'Products'   },
   stat2: { value: '4.8★', label: 'Avg Rating' },
   stat3: { value: '1K+',  label: 'Customers'  },
-  images: [
-    { url: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=700&q=85&fit=crop', name: 'Classic Pumps', price: 'UGX 145,000', link: '/products/classic-pump-heels' },
-    { url: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&q=85&fit=crop', name: 'Boho Cushions', price: 'UGX 65,000', link: '/products/boho-cushion-covers' },
-  ],
+  images: [],  // intentionally empty — prevents stale placeholder images from being
+               // written to Firestore if the _config/hero document is ever recreated
 };
 
 // GET /api/hero — public

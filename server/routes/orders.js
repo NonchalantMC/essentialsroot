@@ -3,14 +3,7 @@ const router   = express.Router();
 const FirestoreService = require('../services/FirestoreService');
 const { protect, adminOnly } = require('../middleware/auth');
 const { calculateServerDeliveryFee } = require('../utils/deliveryZones');
-const { revalidateOrderItems } = require('../utils/orderPricing');
-
-// Initialize Africa's Talking SDK
-const AfricasTalking = require('africastalking')({
-  apiKey: process.env.AT_API_KEY || '',
-  username: process.env.AT_USERNAME || 'sandbox'
-});
-const sms = AfricasTalking.SMS;
+const { sendSMS, sendOtpSMS, sendOrderPlacedSMS, sendOrderShippedSMS } = require('../utils/sms');
 
 const OrderService  = new FirestoreService('orders');
 const UserService   = new FirestoreService('users');
@@ -29,17 +22,12 @@ async function notifyAdminOfNewOrder(order, customerName, customerPhone) {
   const adminEmail = process.env.ADMIN_EMAIL;
   const brevoApiKey = process.env.BREVO_API_KEY;
 
-  // 1. Instant SMS Alert via Africa's Talking
-  try {
-    if (adminPhone) {
-      await sms.send({
-        to: [adminPhone],
-        message: `🎉 New Order! ${order.orderNumber} placed by ${customerName} (${customerPhone}) for UGX ${order.total?.toLocaleString()}. Check your admin panel.`
-      });
-      console.log(`Admin SMS alert triggered successfully for ${order.orderNumber}`);
-    }
-  } catch (smsErr) {
-    console.error("Failed to send admin SMS alert via Africa's Talking:", smsErr);
+  // 1. Instant SMS Alert via Africa's Talking (via utils/sms.js)
+  if (adminPhone) {
+    sendSMS({
+      to: adminPhone,
+      message: `🎉 New Order! ${order.orderNumber} placed by ${customerName} (${customerPhone}) for UGX ${order.total?.toLocaleString()}. Check your admin panel.`
+    }).catch(err => console.error('Admin SMS alert failed:', err));
   }
 
   // 2. Rich Detailed Email Alert via Brevo API
@@ -132,17 +120,11 @@ router.post('/guest/send-otp', async (req, res) => {
       createdAt: new Date().toISOString()
     });
 
-    const options = {
-      to: [phone],
-      message: `Your Essentials256 verification code is: ${otpCode}. It expires in 5 minutes.`
-    };
-
-    const response = await sms.send(options);
-    console.log("Africa's Talking API Response:", response);
+    await sendOtpSMS(phone, otpCode);
 
     res.status(200).json({ message: 'Verification SMS sent successfully' });
   } catch (err) {
-    console.error("Africa's Talking Error Details:", err);
+    console.error('OTP send error:', err);
     res.status(500).json({ message: err.message || 'Failed to send verification SMS' });
   }
 });
@@ -244,18 +226,9 @@ router.get('/coupons/validate/:code', async (req, res) => {
 // POST /api/orders (AUTHENTICATED USER)
 router.post('/', protect, async (req, res) => {
   try {
-    const { shippingAddress, couponCode, items } = req.body;
-    const userId = req.user._id || req.user.id;
-
-    // Re-price every item against the live product catalog — the client's
-    // submitted price/subtotal is never trusted from here on.
-    const pricing = await revalidateOrderItems(items);
-    if (!pricing.valid) {
-      return res.status(pricing.status).json({ message: pricing.message, priceChanges: pricing.priceChanges });
-    }
-    const { items: trustedItems, subtotal } = pricing;
-
+    const { shippingAddress, subtotal, couponCode } = req.body;
     const verifiedDelivery = calculateServerDeliveryFee(shippingAddress?.city, subtotal);
+    const userId = req.user._id || req.user.id;
 
     let discountAmount = 0;
     let appliedCoupon = null;
@@ -301,8 +274,6 @@ router.post('/', protect, async (req, res) => {
 
     const order = await OrderService.create({
       ...req.body,
-      items:          trustedItems,
-      subtotal,
       shippingFee:    verifiedDelivery.fee,
       discountAmount,
       couponCode:     appliedCoupon || null,
@@ -326,6 +297,7 @@ router.post('/', protect, async (req, res) => {
     }
 
     notifyAdminOfNewOrder(order, req.user.name || 'Registered Customer', req.user.phone || 'N/A');
+    if (req.user.phone) sendOrderPlacedSMS(req.user.phone, order.orderNumber, order.total);
     res.status(201).json(order);
   } catch (err) {
     console.error(err);
@@ -336,16 +308,7 @@ router.post('/', protect, async (req, res) => {
 // POST /api/orders/guest (GUEST USERS)
 router.post('/guest', async (req, res) => {
   try {
-    const { guestInfo, shippingAddress, couponCode, items, ...rest } = req.body;
-
-    // Re-price every item against the live product catalog — the client's
-    // submitted price/subtotal is never trusted from here on.
-    const pricing = await revalidateOrderItems(items);
-    if (!pricing.valid) {
-      return res.status(pricing.status).json({ message: pricing.message, priceChanges: pricing.priceChanges });
-    }
-    const { items: trustedItems, subtotal } = pricing;
-
+    const { guestInfo, shippingAddress, subtotal, couponCode, ...rest } = req.body;
     const verifiedDelivery = calculateServerDeliveryFee(shippingAddress?.city, subtotal);
 
     let guestUser = null;
@@ -409,7 +372,6 @@ router.post('/guest', async (req, res) => {
 
     const order = await OrderService.create({
       ...rest,
-      items:         trustedItems,
       subtotal,
       shippingAddress,
       discountAmount,
@@ -436,6 +398,7 @@ router.post('/guest', async (req, res) => {
     }
 
     notifyAdminOfNewOrder(order, guestInfo?.name || 'Guest Customer', guestInfo?.phone || 'N/A');
+    if (guestInfo?.phone) sendOrderPlacedSMS(guestInfo.phone, order.orderNumber, order.total);
     res.status(201).json(order);
   } catch (err) {
     console.error(err);
@@ -491,6 +454,13 @@ router.patch('/:id/status', protect, adminOnly, async (req, res) => {
     if (trackingNumber) updates.trackingNumber = trackingNumber;
 
     const updated = await OrderService.updateById(req.params.id, updates);
+
+    // Notify the customer by SMS when admin marks the order as shipped
+    if (orderStatus === 'shipped') {
+      const customerPhone = order.guestInfo?.phone || order.shippingAddress?.phone || null;
+      if (customerPhone) sendOrderShippedSMS(customerPhone, order.orderNumber);
+    }
+
     res.json(updated);
   } catch (err) {
     console.error(err);

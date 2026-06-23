@@ -1,15 +1,19 @@
-const nodemailer = require('nodemailer');
-
-const transporter = nodemailer.createTransport({
-  host:   process.env.SMTP_HOST || 'smtp.gmail.com',
-  port:   Number(process.env.SMTP_PORT) || 587,
-  secure: Number(process.env.SMTP_PORT) === 465,
-  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-});
+// ─── Essentials256 Email — single transport: Brevo API ───────────────────────
+// All outbound email goes through Brevo's REST API. nodemailer/SMTP is not
+// used — it was removed because Gmail SMTP isn't built for transactional
+// volume and risks rate-limiting and spam-folder placement at scale.
+//
+// Required env vars:
+//   BREVO_API_KEY   — from https://app.brevo.com/settings/keys/api
+//   FROM_EMAIL      — verified sender in Brevo (default: orders@essentials256.com)
+//   ADMIN_EMAIL     — where admin alerts go
+//   CLIENT_URL      — frontend base URL for email links
+// ─────────────────────────────────────────────────────────────────────────────
 
 const fmt  = n => `UGX ${Number(n || 0).toLocaleString()}`;
 const YEAR = new Date().getFullYear();
 
+// ── Shared HTML wrapper (header + footer) ─────────────────────────────────────
 function wrap(body) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
   <body style="margin:0;padding:20px 0;background:#f5f2ed;">
@@ -26,24 +30,59 @@ function wrap(body) {
   </div></body></html>`;
 }
 
-// ─── NEW TEMPLATE: WELCOME EMAIL WITH COUPON PLACEHOLDER ───
+// ── Brevo send helper ─────────────────────────────────────────────────────────
+async function sendEmail({ to, subject, html }) {
+  const brevoApiKey = process.env.BREVO_API_KEY;
+
+  if (!brevoApiKey) {
+    console.log(`📧 Email skipped (BREVO_API_KEY not configured) → ${to}: ${subject}`);
+    return;
+  }
+
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept':       'application/json',
+        'api-key':      brevoApiKey,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: {
+          name:  'Essentials256',
+          email: process.env.FROM_EMAIL || 'orders@essentials256.com',
+        },
+        to:          [{ email: to }],
+        subject,
+        htmlContent: html,
+      }),
+    });
+
+    if (!response.ok) {
+      const errPayload = await response.text();
+      throw new Error(`Brevo ${response.status}: ${errPayload}`);
+    }
+    console.log(`✅ Email sent → ${to}`);
+  } catch (err) {
+    console.error(`❌ Email failed → ${to}:`, err.message);
+  }
+}
+
+// ── Templates ─────────────────────────────────────────────────────────────────
+
 function welcomeEmailHtml(name) {
   return wrap(`<div style="padding:40px;">
     <h1 style="font-family:Georgia,serif;font-size:28px;color:#2C5F2D;margin:0 0 8px;">Welcome to Essentials256! ✨</h1>
     <p style="color:#5a5a5a;font-size:15px;line-height:1.6;margin:0 0 24px;">
       Hi ${name}, thank you for creating an account with us. We are absolutely thrilled to welcome you to our community of exquisite ladies' footwear and premium home decor.
     </p>
-    
-    <div style="border: 2px dashed #c9a840; background: #fffdf6; border-radius: 12px; padding: 20px; text-align: center; margin: 28px 0;">
-      <div style="font-size: 12px; color: #999; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">Your Welcome Gift</div>
-      <div style="font-size: 20px; font-weight: 700; color: #1a2e1a; letter-spacing: 0.5px; margin-bottom: 6px;">10% OFF YOUR FIRST ORDER</div>
-      <div style="display: inline-block; background: #1a2e1a; color: #fff; font-family: monospace; font-size: 16px; padding: 6px 16px; border-radius: 6px; font-weight: bold; margin: 6px 0;">WELCOME10</div>
-      <div style="font-size: 11px; color: #a19578; margin-top: 4px;">Apply this coupon code at checkout to claim your reward.</div>
+    <div style="border:2px dashed #c9a840;background:#fffdf6;border-radius:12px;padding:20px;text-align:center;margin:28px 0;">
+      <div style="font-size:12px;color:#999;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Your Welcome Gift</div>
+      <div style="font-size:20px;font-weight:700;color:#1a2e1a;letter-spacing:0.5px;margin-bottom:6px;">10% OFF YOUR FIRST ORDER</div>
+      <div style="display:inline-block;background:#1a2e1a;color:#fff;font-family:monospace;font-size:16px;padding:6px 16px;border-radius:6px;font-weight:bold;margin:6px 0;">WELCOME10</div>
+      <div style="font-size:11px;color:#a19578;margin-top:4px;">Apply this coupon code at checkout to claim your reward.</div>
     </div>
-
-    <p style="color:#5a5a5a;font-size:14px;line-height:1.6;margin:0 0 24px;">
-      Explore our collections today and find the pieces that fit your unique lifestyle.
-    </p>
+    <p style="color:#5a5a5a;font-size:14px;line-height:1.6;margin:0 0 24px;">Explore our collections today and find the pieces that fit your unique lifestyle.</p>
     <div style="text-align:center;">
       <a href="${process.env.CLIENT_URL || 'http://localhost:5173'}"
          style="display:inline-block;background:#2C5F2D;color:#fff;text-decoration:none;padding:14px 32px;border-radius:100px;font-size:14px;font-weight:600;">
@@ -53,7 +92,6 @@ function welcomeEmailHtml(name) {
   </div>`);
 }
 
-// ─── NEW TEMPLATE: ADMIN NEW USER ALERT ───
 function adminNewUserHtml(user) {
   return wrap(`<div style="padding:40px;">
     <h1 style="font-family:Georgia,serif;font-size:22px;color:#141414;margin:0 0 16px;border-bottom:1px solid #f0ede8;padding-bottom:12px;">👤 New User Registered</h1>
@@ -75,47 +113,49 @@ function adminNewUserHtml(user) {
   </div>`);
 }
 
-// ─── NEW TEMPLATE: ADMIN NEW PENDING ORDER ALERT ───
-function adminNewOrderHtml(order) {
-  const clientName = order.guestInfo?.name || order.shippingAddress?.name || 'Customer';
-  const rows = (order.items || []).map(i => `
-    <tr>
-      <td style="padding:10px 0;border-bottom:1px solid #f0ede8;font-size:13px;color:#141414;">
-        <strong>${i.name}</strong> <span style="color:#999;">x${i.quantity}</span>
-        ${i.size ? `<br><span style="color:#999;font-size:11px;">Size: EU ${i.size}</span>` : ''}
-      </td>
-      <td style="padding:10px 0;border-bottom:1px solid #f0ede8;text-align:right;font-size:13px;font-weight:600;color:#141414;">
-        ${fmt(i.price * i.quantity)}
-      </td>
-    </tr>`).join('');
+function adminNewOrderHtml(order, customerName, customerPhone) {
+  const itemsHtml = Array.isArray(order.items)
+    ? `<h3 style="color:#141414;border-bottom:1px solid #ede9e2;padding-bottom:8px;">Ordered Items</h3>
+       <table style="width:100%;border-collapse:collapse;font-size:14px;">
+         ${order.items.map(i => `
+           <tr>
+             <td style="padding:8px 0;text-align:left;"><strong>${i.name}</strong> (x${i.quantity || 1})</td>
+             <td style="padding:8px 0;text-align:right;font-weight:bold;">${fmt(i.price * (i.quantity || 1))}</td>
+           </tr>`).join('')}
+       </table>`
+    : '';
 
   return wrap(`<div style="padding:40px;">
     <h1 style="font-family:Georgia,serif;font-size:22px;color:#2C5F2D;margin:0 0 6px;">🛍️ New Order Received</h1>
-    <p style="color:#5a5a5a;font-size:14px;margin:0 0 24px;">Order <strong>${order.orderNumber}</strong> has been successfully placed and is awaiting review.</p>
-    
+    <p style="color:#5a5a5a;font-size:14px;margin:0 0 24px;">Order <strong>${order.orderNumber}</strong> has been placed and is awaiting review.</p>
     <div style="background:#faf7f2;border-radius:12px;padding:16px 20px;margin-bottom:24px;font-size:13px;line-height:1.5;">
       <div style="font-weight:700;margin-bottom:4px;text-transform:uppercase;font-size:11px;color:#999;letter-spacing:0.5px;">Customer Overview</div>
-      <strong>Name:</strong> ${clientName}<br>
-      <strong>Contact:</strong> ${order.guestInfo?.phone || order.shippingAddress?.phone || 'N/A'}<br>
+      <strong>Name:</strong> ${customerName}<br>
+      <strong>Contact:</strong> ${customerPhone}<br>
+      <strong>Delivery Zone:</strong> ${order.deliveryZone || 'N/A'}<br>
       <strong>Type:</strong> ${order.guestInfo ? 'Guest Checkout' : 'Registered Member'}
     </div>
-
-    <h2 style="font-size:12px;font-weight:700;color:#141414;margin:0 0 8px;text-transform:uppercase;letter-spacing:.5px;">Order Summary</h2>
-    <table style="width:100%;border-collapse:collapse;">${rows}</table>
-    <table style="width:100%;border-collapse:collapse;margin-top:8px;">
+    ${itemsHtml}
+    <table style="width:100%;border-collapse:collapse;margin-top:16px;">
       <tr>
         <td style="padding:8px 0;font-size:13px;color:#5a5a5a;">Subtotal</td>
-        <td style="padding:8px 0;text-align:right;font-size:13px;color:#141414;">${fmt(order.subtotal)}</td>
+        <td style="padding:8px 0;text-align:right;font-size:13px;">${fmt(order.subtotal)}</td>
       </tr>
       <tr>
-        <td style="padding:8px 0;font-size:13px;color:#5a5a5a;">Delivery Fee (${order.deliveryZone || 'Standard'})</td>
-        <td style="padding:8px 0;text-align:right;font-size:13px;color:#141414;">${fmt(order.shippingFee)}</td>
+        <td style="padding:8px 0;font-size:13px;color:#5a5a5a;">Delivery Fee</td>
+        <td style="padding:8px 0;text-align:right;font-size:13px;">${fmt(order.shippingFee)}</td>
       </tr>
       <tr style="border-top:1px solid #ede9e2;">
         <td style="padding:12px 0 0;font-size:15px;font-weight:700;color:#141414;">Grand Total</td>
         <td style="padding:12px 0 0;text-align:right;font-size:15px;font-weight:700;color:#2C5F2D;">${fmt(order.total)}</td>
       </tr>
     </table>
+    <div style="text-align:center;margin-top:30px;">
+      <a href="${process.env.ADMIN_PANEL_URL || 'http://localhost:5173'}/admin/orders"
+         style="background:#2C5F2D;color:#fff;padding:12px 24px;text-decoration:none;font-weight:bold;border-radius:25px;display:inline-block;">
+        View Full Order Details
+      </a>
+    </div>
   </div>`);
 }
 
@@ -209,29 +249,10 @@ function resetPasswordHtml(name, resetUrl) {
   </div>`);
 }
 
-async function sendEmail({ to, subject, html }) {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.log(`📧 Email skipped (SMTP not configured) → ${to}: ${subject}`);
-    return;
-  }
-  try {
-    await transporter.sendMail({
-      // Forces outbound sender specifically to orders@essentials256.com
-      from: `"Essentials256" <${process.env.FROM_EMAIL || 'orders@essentials256.com'}>`,
-      to, subject, html,
-    });
-    console.log(`✅ Email sent → ${to}`);
-  } catch (err) {
-    console.error(`❌ Email failed → ${to}:`, err.message);
-  }
-}
+// ── Public send functions ─────────────────────────────────────────────────────
 
 async function sendWelcomeEmail(email, name) {
-  await sendEmail({
-    to:      email,
-    subject: `Welcome to Essentials256, ${name}! ✨`,
-    html:    welcomeEmailHtml(name),
-  });
+  await sendEmail({ to: email, subject: `Welcome to Essentials256, ${name}! ✨`, html: welcomeEmailHtml(name) });
 }
 
 async function sendAdminNewUserAlert(user) {
@@ -242,12 +263,16 @@ async function sendAdminNewUserAlert(user) {
   });
 }
 
-async function sendAdminNewOrderAlert(order) {
+async function notifyAdminOfNewOrder(order, customerName, customerPhone) {
   await sendEmail({
     to:      process.env.ADMIN_EMAIL || 'orders@essentials256.com',
     subject: `🔔 New Pending Order: ${order.orderNumber}`,
-    html:    adminNewOrderHtml(order),
+    html:    adminNewOrderHtml(order, customerName, customerPhone),
   });
+}
+
+async function sendAdminNewOrderAlert(order) {
+  await notifyAdminOfNewOrder(order, order.guestInfo?.name || order.shippingAddress?.name || 'Customer', order.guestInfo?.phone || order.shippingAddress?.phone || 'N/A');
 }
 
 async function sendOrderConfirmation(order, email, name) {
@@ -274,12 +299,13 @@ async function sendPasswordReset(email, name, resetUrl) {
   });
 }
 
-module.exports = { 
-  sendEmail, 
+module.exports = {
+  sendEmail,
   sendWelcomeEmail,
   sendAdminNewUserAlert,
   sendAdminNewOrderAlert,
-  sendOrderConfirmation, 
-  sendOrderShipped, 
-  sendPasswordReset 
+  notifyAdminOfNewOrder,
+  sendOrderConfirmation,
+  sendOrderShipped,
+  sendPasswordReset,
 };

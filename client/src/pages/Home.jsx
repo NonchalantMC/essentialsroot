@@ -28,10 +28,7 @@ const DEFAULT_HERO = {
   stat1: { value:'500+', label:'Products'   },
   stat2: { value:'4.8★', label:'Avg Rating' },
   stat3: { value:'1K+',  label:'Customers'  },
-  images: [
-    { url:'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=700&q=85&fit=crop', name:'Classic Pumps', price:'UGX 145,000', link:'/products/classic-pump-heels' },
-    { url:'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&q=85&fit=crop', name:'Boho Cushions', price:'UGX 65,000', link:'/products/boho-cushion-covers' },
-  ],
+  images: [],  // intentionally empty — real images come from Firestore via GET /api/hero
   bgImage: '',
 };
 
@@ -40,9 +37,13 @@ export default function Home() {
   const [loading,  setLoading]  = useState(true);
   const [tab,      setTab]      = useState('all');
   const [hero,     setHero]     = useState(DEFAULT_HERO);
+  const [heroLoading, setHeroLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/hero').then(({ data }) => setHero(data)).catch(() => {});
+    api.get('/hero')
+      .then(({ data }) => setHero(data))
+      .catch(() => {})
+      .finally(() => setHeroLoading(false));
     productService.list({ status:'active', limit:100 })
       .then(({ data }) => { if (data.products?.length) setProducts(data.products); })
       .catch(() => {})
@@ -89,10 +90,16 @@ export default function Home() {
               </motion.div>
             </div>
           </div>
-          <div className="grid gap-[2px]" style={{background:'#0d1a14',gridTemplateColumns:`repeat(${Math.min(hero.images.length,2)},1fr)`,minHeight:'200px'}}>
-            {hero.images.slice(0,2).map((img,i)=>(
+          <div className="grid gap-[2px]" style={{background:'#0d1a14',gridTemplateColumns:'repeat(2,1fr)',minHeight:'200px'}}>
+            {heroLoading ? (
+              // Shimmer placeholders — shown only while the Firestore fetch is in flight.
+              // Prevents the stale DEFAULT_HERO images from flashing on every load.
+              [0,1].map(i => (
+                <div key={i} style={{minHeight:'200px',background:'linear-gradient(90deg,#1a2e1a 25%,#243d24 50%,#1a2e1a 75%)',backgroundSize:'200% 100%',animation:'shimmer 1.4s infinite'}} />
+              ))
+            ) : hero.images.slice(0,2).map((img,i)=>(
               <Link key={i} to={img.link||'/'} className="relative overflow-hidden group block" style={{minHeight:'200px'}}>
-                <img src={img.url} alt={img.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" style={{position:'absolute',inset:0,width:'100%',height:'100%'}} />
+                <img src={img.url} alt={img.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" style={{position:'absolute',inset:0,width:'100%',height:'100%'}} loading="eager" fetchpriority="high" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent flex flex-col justify-end p-4">
                   {img.name&&<div className="text-white font-semibold text-sm leading-tight">{img.name}</div>}
                   {img.price&&<div style={{color:'#86e8c4'}} className="text-[13px] font-medium mt-1">{img.price}</div>}
