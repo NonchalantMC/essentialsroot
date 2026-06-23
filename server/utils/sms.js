@@ -74,7 +74,7 @@ async function sendSMS({ to, message }) {
  * Sends a 6-digit checkout confirmation token to a guest visitor
  */
 async function sendOtpSMS(phone, code) {
-  const msg = `Essentials256: Your verification code is ${code}. It expires in 10 minutes. Do not share this code.`;
+  const msg = `Essentials256: Your verification code is ${code}. It expires in 5 minutes. Do not share this code.`;
   await sendSMS({ to: phone, message: msg });
 }
 
