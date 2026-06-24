@@ -621,9 +621,237 @@ function ProductsAdmin() {
 
 // ─── ORDERS ADMIN ─────────────────────────────────────────────────────────────
 
+const STATUS_FLOW = ['pending','processing','shipped','delivered','cancelled'];
+
+const STATUS_COLOR = {
+  delivered: 'bg-green-100 text-green-700',
+  shipped:   'bg-blue-100 text-blue-700',
+  processing:'bg-yellow-100 text-yellow-700',
+  pending:   'bg-gray-100 text-gray-600',
+  cancelled: 'bg-red-100 text-red-600',
+};
+
+function OrderDrawer({ order, onClose, onUpdated }) {
+  const [status,   setStatus]   = useState(order.orderStatus || 'pending');
+  const [note,     setNote]     = useState('');
+  const [tracking, setTracking] = useState(order.trackingNumber || '');
+  const [saving,   setSaving]   = useState(false);
+  const [saved,    setSaved]    = useState(false);
+
+  const customer = order.customerId || {};
+  const addr     = order.shippingAddress || {};
+  const items    = order.items || [];
+
+  async function handleSave() {
+    if (status === order.orderStatus) return;
+    setSaving(true);
+    try {
+      await api.patch(`/orders/${order._id || order.id}/status`, {
+        orderStatus: status,
+        note:        note.trim() || `Status updated to ${status}`,
+        trackingNumber: tracking.trim() || undefined,
+      });
+      setSaved(true);
+      onUpdated(order._id || order.id, status, tracking.trim());
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Failed to update status');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Drawer */}
+      <div
+        className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col"
+        style={{ animation: 'slideInRight 0.25s ease' }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#ede9e2]">
+          <div>
+            <div className="font-semibold text-[#2C5F2D] text-base">{order.orderNumber}</div>
+            <div className="text-xs text-[#999] mt-0.5">
+              {order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-UG',{day:'numeric',month:'short',year:'numeric'}) : ''}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#f5f2ed] text-[#999] text-lg transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+          {/* Customer */}
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[#999] mb-2">Customer</div>
+            <div className="bg-[#faf7f2] rounded-xl p-4 text-sm space-y-1">
+              <div className="font-semibold text-[#141414]">
+                {customer.name || order.guestInfo?.name || '—'}
+                {order.guestInfo && <span className="ml-2 text-[10px] bg-[#ede9e2] text-[#5a5a5a] px-2 py-0.5 rounded-full">Guest</span>}
+              </div>
+              {(customer.email || order.guestInfo?.email) &&
+                <div className="text-[#5a5a5a]">{customer.email || order.guestInfo?.email}</div>}
+              {(customer.phone || order.guestInfo?.phone) &&
+                <div className="text-[#5a5a5a]">{customer.phone || order.guestInfo?.phone}</div>}
+            </div>
+          </div>
+
+          {/* Delivery */}
+          {addr.city && (
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-[#999] mb-2">Delivery Address</div>
+              <div className="bg-[#faf7f2] rounded-xl p-4 text-sm text-[#5a5a5a] space-y-0.5">
+                {addr.name && <div className="font-semibold text-[#141414]">{addr.name}</div>}
+                <div>{addr.city}{addr.district ? `, ${addr.district}` : ''}</div>
+                {addr.country && <div>{addr.country}</div>}
+                {order.deliveryZone && <div className="text-xs text-[#999] mt-1">Zone: {order.deliveryZone}</div>}
+              </div>
+            </div>
+          )}
+
+          {/* Items */}
+          {items.length > 0 && (
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-[#999] mb-2">Items ({items.length})</div>
+              <div className="space-y-2">
+                {items.map((item, i) => (
+                  <div key={i} className="flex items-center gap-3 bg-[#faf7f2] rounded-xl p-3">
+                    {item.image && (
+                      <img src={item.image} alt={item.name} className="w-12 h-12 object-cover rounded-lg flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-[#141414] truncate">{item.name}</div>
+                      <div className="text-xs text-[#999]">
+                        {item.size ? `EU ${item.size} · ` : ''}{item.color ? `${item.color} · ` : ''}Qty: {item.quantity}
+                      </div>
+                    </div>
+                    <div className="text-sm font-semibold text-[#2C5F2D] whitespace-nowrap">
+                      UGX {(item.price * item.quantity).toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Order summary */}
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[#999] mb-2">Summary</div>
+            <div className="bg-[#faf7f2] rounded-xl p-4 text-sm space-y-2">
+              <div className="flex justify-between text-[#5a5a5a]">
+                <span>Subtotal</span><span>UGX {order.subtotal?.toLocaleString()}</span>
+              </div>
+              {order.discountAmount > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span>Discount {order.couponCode ? `(${order.couponCode})` : ''}</span>
+                  <span>− UGX {order.discountAmount?.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-[#5a5a5a]">
+                <span>Delivery</span><span>UGX {order.shippingFee?.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between font-semibold text-[#141414] pt-2 border-t border-[#ede9e2]">
+                <span>Total</span><span style={{color:'#2C5F2D'}}>UGX {order.total?.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-xs text-[#999] pt-1">
+                <span>Payment</span>
+                <span className={`font-medium ${order.paymentStatus==='paid'?'text-green-600':order.paymentStatus==='failed'?'text-red-500':'text-[#999]'}`}>
+                  {order.paymentStatus}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Status history */}
+          {order.statusHistory?.length > 0 && (
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-[#999] mb-2">Status History</div>
+              <div className="space-y-2">
+                {[...order.statusHistory].reverse().map((h, i) => (
+                  <div key={i} className="flex gap-3 items-start text-sm">
+                    <div className="w-2 h-2 rounded-full bg-[#2C5F2D] mt-1.5 flex-shrink-0" />
+                    <div>
+                      <span className="font-medium capitalize">{h.status}</span>
+                      {h.note && <span className="text-[#999] ml-1">— {h.note}</span>}
+                      <div className="text-[11px] text-[#bbb]">
+                        {h.updatedAt ? new Date(h.updatedAt).toLocaleString('en-UG') : ''}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer: status update controls */}
+        <div className="px-6 py-4 border-t border-[#ede9e2] bg-white space-y-3">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[#999] mb-1">Update Order Status</div>
+
+          <select
+            value={status}
+            onChange={e => setStatus(e.target.value)}
+            className="w-full px-4 py-2.5 border border-[#ede9e2] rounded-xl text-sm bg-white focus:outline-none focus:border-[#2C5F2D]"
+          >
+            {STATUS_FLOW.map(s => (
+              <option key={s} value={s} className="capitalize">{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+            ))}
+          </select>
+
+          {status === 'shipped' && (
+            <input
+              type="text"
+              placeholder="Tracking number (optional)"
+              value={tracking}
+              onChange={e => setTracking(e.target.value)}
+              className="w-full px-4 py-2.5 border border-[#ede9e2] rounded-xl text-sm focus:outline-none focus:border-[#2C5F2D]"
+            />
+          )}
+
+          <input
+            type="text"
+            placeholder="Note (optional)"
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            className="w-full px-4 py-2.5 border border-[#ede9e2] rounded-xl text-sm focus:outline-none focus:border-[#2C5F2D]"
+          />
+
+          <button
+            onClick={handleSave}
+            disabled={saving || status === order.orderStatus}
+            className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40"
+            style={{ background: saved ? '#27ae60' : '#2C5F2D' }}
+          >
+            {saving ? 'Saving…' : saved ? '✓ Status Updated' : 'Save Status'}
+          </button>
+          {status === order.orderStatus && (
+            <p className="text-center text-xs text-[#bbb]">Change the status above to save</p>
+          )}
+          {status === 'shipped' && status !== order.orderStatus && (
+            <p className="text-center text-xs text-[#2C5F2D]">📱 Customer will receive an SMS notification</p>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function OrdersAdmin() {
   const [orders,  setOrders]  = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
 
   useEffect(() => {
     api.get('/admin/orders', { params: { limit: 50 } })
@@ -632,13 +860,14 @@ function OrdersAdmin() {
       .finally(() => setLoading(false));
   }, []);
 
-  const STATUS_COLOR = {
-    delivered: 'bg-green-100 text-green-700',
-    shipped:   'bg-blue-100 text-blue-700',
-    processing:'bg-yellow-100 text-yellow-700',
-    pending:   'bg-gray-100 text-gray-600',
-    cancelled: 'bg-red-100 text-red-600',
-  };
+  function handleUpdated(id, newStatus, newTracking) {
+    setOrders(prev => prev.map(o =>
+      (o._id === id || o.id === id)
+        ? { ...o, orderStatus: newStatus, trackingNumber: newTracking || o.trackingNumber }
+        : o
+    ));
+    setSelected(prev => prev ? { ...prev, orderStatus: newStatus, trackingNumber: newTracking || prev.trackingNumber } : null);
+  }
 
   return (
     <div>
@@ -660,9 +889,13 @@ function OrdersAdmin() {
               </thead>
               <tbody className="divide-y divide-[#f5f2ed]">
                 {orders.map(o => (
-                  <tr key={o._id} className="hover:bg-[#faf7f2]/50">
+                  <tr
+                    key={o._id}
+                    className="hover:bg-[#faf7f2]/50 cursor-pointer"
+                    onClick={() => setSelected(o)}
+                  >
                     <td className="px-5 py-3.5 font-medium text-[#2C5F2D] whitespace-nowrap">{o.orderNumber}</td>
-                    <td className="px-5 py-3.5 text-[#5a5a5a] whitespace-nowrap">{o.customerId?.name || '—'}</td>
+                    <td className="px-5 py-3.5 text-[#5a5a5a] whitespace-nowrap">{o.customerId?.name || o.guestInfo?.name || '—'}</td>
                     <td className="px-5 py-3.5 font-semibold whitespace-nowrap">UGX {o.total?.toLocaleString()}</td>
                     <td className="px-5 py-3.5 whitespace-nowrap">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
@@ -681,6 +914,14 @@ function OrdersAdmin() {
             </table>
           </div>
         </div>
+      )}
+
+      {selected && (
+        <OrderDrawer
+          order={selected}
+          onClose={() => setSelected(null)}
+          onUpdated={handleUpdated}
+        />
       )}
     </div>
   );
