@@ -15,8 +15,22 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50kb' }));
+app.use(express.urlencoded({ extended: true, limit: '50kb' }));
+
+// ── Tight rate limit on auth routes — prevents brute force and credential stuffing
+// Keyed on email so the limit is per-account, not per-IP (VPNs won't help attackers)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  keyGenerator: (req) => (req.body?.email || req.ip || 'unknown').toLowerCase(),
+  message: { message: 'Too many attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/auth/login',    authLimiter);
+app.use('/api/auth/register', authLimiter);
+
 app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 200 }));
 
 // ── Firebase connection ───────────────────────────────────────────────────────
@@ -30,7 +44,7 @@ db.collection('_health').doc('ping')
 
 // ── Health check endpoint ─────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', db: 'firestore', ts: new Date().toISOString() });
+  res.json({ status: 'ok' });
 });
 
 
@@ -47,9 +61,10 @@ app.use('/api/coupons',  require('./routes/coupons'));
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error(err.stack);
+  const isDev = process.env.NODE_ENV === 'development';
   res.status(err.status || 500).json({
-    message: err.message || 'Something went wrong',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    message: isDev ? err.message : 'Something went wrong. Please try again.',
+    ...(isDev && { stack: err.stack }),
   });
 });
 

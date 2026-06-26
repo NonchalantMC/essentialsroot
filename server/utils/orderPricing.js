@@ -2,18 +2,9 @@ const FirestoreService = require('../services/FirestoreService');
 
 const ProductService = new FirestoreService('products');
 
-// UGX has no sub-unit in practice; this only guards against stray floating
-// point noise from upstream math, not real price differences.
 const PRICE_TOLERANCE = 1;
 
 /**
- * Re-prices every cart item against the live product catalog. The server's
- * stored price always wins — a client-submitted price is never trusted or
- * written to an order. If the trusted subtotal doesn't match what the
- * client believed it was paying, the order is rejected with the specifics
- * of what changed, rather than silently charging a different total than
- * what the customer saw at checkout.
- *
  * @param {Array} clientItems - items as submitted by the client, each
  *   expected to include at least { productId, quantity, price }.
  * @returns {Promise<
@@ -59,7 +50,15 @@ async function revalidateOrderItems(clientItems) {
       });
     }
 
-    const quantity = Number(item.quantity) || 1;
+    const quantity = Number(item.quantity);
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+      return {
+        valid:   false,
+        status:  400,
+        message: `Invalid quantity for "${product.name}". Must be a whole number between 1 and 100.`,
+      };
+    }
+
     subtotal += trustedPrice * quantity;
 
     return {
@@ -67,7 +66,7 @@ async function revalidateOrderItems(clientItems) {
       sku:       product.sku || item.sku || '',
       name:      product.name,
       image:     product.images?.[0] || item.image || '',
-      price:     trustedPrice, // server price always wins
+      price:     trustedPrice,
       quantity,
       size:      item.size,
       width:     item.width,

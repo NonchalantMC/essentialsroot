@@ -1355,7 +1355,7 @@ export default function Admin() {
   const { logout }   = useAuthStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const handleLogout = () => { logout(); navigate('/'); };
+  const handleLogout = async () => { await logout(); navigate('/'); };
 
   // Close mobile sidebar on navigation switch
   useEffect(() => {

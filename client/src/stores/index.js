@@ -65,7 +65,18 @@ export const useAuthStore = create(
         }
       },
 
-      logout:      () => set({ user: null, token: null, error: null }),
+      logout: async () => {
+        // Call the server first so tokenVersion is incremented and the JWT
+        // is invalidated immediately — then clear local state regardless of
+        // whether the server call succeeded (e.g. already expired token).
+        try {
+          await api.post('/auth/logout');
+        } catch {
+          // Swallow — token may already be expired or revoked; local
+          // clear still needs to happen either way.
+        }
+        set({ user: null, token: null, error: null });
+      },
       isLoggedIn:  () => !!get().token,
       isAdmin:     () => get().user?.role === 'admin',
 

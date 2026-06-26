@@ -400,6 +400,104 @@ export default function Checkout() {
                     </div>
                   </div>
 
+                  {/* ── ORDER SUMMARY (mobile only — sits between PesaPal and pay button) ── */}
+                  <div className="lg:hidden bg-white border rounded-2xl p-5 mt-2" style={{ borderColor:'var(--border)' }}>
+              <h3 className="font-semibold text-base mb-4" style={{ color:'var(--ink)' }}>Order Summary</h3>
+              <div className="space-y-3 mb-5">
+                {items.map(item => (
+                  <div key={item.key} className="flex gap-3 items-center">
+                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border" style={{ background:'var(--cream)', borderColor:'var(--border)' }}>
+                      {item.product.images?.[0] ? <img src={item.product.images[0]} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xl">{item.product.type==='footwear'?'👠':'🏺'}</div>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium line-clamp-1" style={{ color:'var(--ink)' }}>{item.product.name}</p>
+                      {item.size && <p className="text-[10px]" style={{ color:'var(--ink-soft)' }}>EU {item.size} × {item.qty}</p>}
+                    </div>
+                    <span className="text-xs font-semibold whitespace-nowrap" style={{ color:'var(--teal)' }}>{fmt(item.product.price * item.qty)}</span>
+                  </div>
+                ))}
+              </div>
+              <hr className="mb-4" style={{ borderColor:'var(--border)' }} />
+              
+              {/* ── STEP 5: Applied Coupon Input Component Block Layout ── */}
+              <div className="mb-4">
+                <label className="block text-[10px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-1.5">Promo Coupon</label>
+                {!appliedCoupon ? (
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                      placeholder="E.g. EXTRA20" 
+                      className="flex-1 px-3 py-2 border rounded-xl text-xs uppercase outline-none focus:border-[#1e805f] bg-white transition-all"
+                      style={{ borderColor: 'var(--border)' }}
+                    />
+                    <button 
+                      type="button"
+                      onClick={handleApplyCoupon}
+                      disabled={couponLoading || !couponCode.trim()}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-[#141414] hover:bg-[#222] transition-colors disabled:opacity-40"
+                    >
+                      {couponLoading ? '...' : 'Apply'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between p-2.5 rounded-xl border text-xs" style={{ background: 'var(--teal-pale)', borderColor: 'var(--teal)' }}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm">🎫</span>
+                      <div>
+                        <span className="font-bold text-[#1e805f]">{appliedCoupon.code}</span>
+                        <span className="text-[10px] block text-gray-500">
+                          {appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discountValue}% Off Promo Applied` : `UGX ${appliedCoupon.discountValue?.toLocaleString()} Flat Value Subtracted`}
+                        </span>
+                      </div>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={handleRemoveCoupon} 
+                      className="text-xs text-red-500 hover:text-red-700 font-medium px-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <hr className="mb-3" style={{ borderColor:'var(--border)' }} />
+              
+              <div className="space-y-1.5 text-xs mb-3 font-medium">
+                <div className="flex justify-between" style={{ color:'var(--ink-soft)' }}>
+                  <span>Subtotal</span>
+                  <span>{fmt(subtotal)}</span>
+                </div>
+
+                {/* ── STEP 5: Visualizing Active Coupon Reductions inline inside totals breakdown ── */}
+                {appliedCoupon && (
+                  <div className="flex justify-between text-[#1e805f] font-semibold">
+                    <span>Coupon Discount</span>
+                    <span>-{fmt(discountAmount)}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between" style={{ color:'var(--ink-soft)' }}>
+                  <span>Delivery Fee</span>
+                  <span className={deliveryInfo.fee === 0 && cityValue?.length >= 2 ? "text-green-600 font-bold" : ""}>
+                    {deliveryInfo.fee === 0 && cityValue?.length >= 2 ? "FREE" : fmt(deliveryInfo.fee)}
+                  </span>
+                </div>
+              </div>
+
+              <hr className="mb-3" style={{ borderColor:'var(--border)' }} />
+              <div className="flex justify-between font-bold text-base mb-1">
+                <span style={{ color:'var(--ink)' }}>Total</span>
+                <span style={{ color:'var(--teal)' }}>{fmt(dynamicTotal)}</span>
+              </div>
+              <p className="text-[11px] mb-5" style={{ color:'var(--ink-soft)' }}>VAT inclusive where applicable</p>
+              <div className="flex flex-wrap gap-1.5 justify-center">
+                {['MTN MoMo','Airtel','Visa','Mastercard'].map(m => <span key={m} className="text-[9px] rounded px-2 py-1 border" style={{ background:'var(--bone)', borderColor:'var(--border)', color:'var(--ink-soft)' }}>{m}</span>)}
+              </div>
+                  </div>
+
                   {/* PAYMENT ACTION BUTTON */}
                   <motion.button 
                     type="submit" 
@@ -424,8 +522,8 @@ export default function Checkout() {
             </AnimatePresence>
           </div>
 
-          {/* ── ORDER SUMMARY (RIGHT BOX) ── */}
-          <div className="lg:col-span-2">
+          {/* ── ORDER SUMMARY (RIGHT BOX — desktop only) ── */}
+          <div className="hidden lg:block lg:col-span-2">
             <div className="bg-white border rounded-2xl p-5 sticky top-24" style={{ borderColor:'var(--border)' }}>
               <h3 className="font-semibold text-base mb-4" style={{ color:'var(--ink)' }}>Order Summary</h3>
               <div className="space-y-3 mb-5">

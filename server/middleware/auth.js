@@ -13,6 +13,17 @@ const protect = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user    = await UserService.findById(decoded.id);
     if (!user) return res.status(401).json({ message: 'User no longer exists' });
+
+    // tokenVersion check — if the user's stored version is ahead of the
+    // token's version, the token was issued before a logout/revocation and
+    // is no longer valid. Existing accounts without tokenVersion pass through
+    // (treated as version 0) until they next log in and get a versioned token.
+    const tokenVer = decoded.tokenVersion ?? 0;
+    const userVer  = user.tokenVersion    ?? 0;
+    if (tokenVer < userVer) {
+      return res.status(401).json({ message: 'Session expired. Please log in again.' });
+    }
+
     req.user = user;
     next();
   } catch (err) {
@@ -27,10 +38,6 @@ const adminOnly = (req, res, next) => {
   next();
 };
 
-// Identifies a logged-in user via JWT when present, but never blocks the
-// request if the token is missing/invalid — for routes guests must also
-// reach (e.g. coupon validation), where we still want req.user populated
-// for logged-in customers without forcing auth on everyone.
 const optionalAuth = async (req, res, next) => {
   try {
     const header = req.headers.authorization;
@@ -38,10 +45,15 @@ const optionalAuth = async (req, res, next) => {
       const token   = header.split(' ')[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user    = await UserService.findById(decoded.id);
-      if (user) req.user = user;
+      if (user) {
+        // Apply the same tokenVersion check as protect
+        const tokenVer = decoded.tokenVersion ?? 0;
+        const userVer  = user.tokenVersion    ?? 0;
+        if (tokenVer >= userVer) req.user = user;
+      }
     }
   } catch (err) {
-    // Invalid/expired token on an optional-auth route — proceed as a guest
+    // Invalid/expired token on an optional-auth route — proceed as guest
   }
   next();
 };

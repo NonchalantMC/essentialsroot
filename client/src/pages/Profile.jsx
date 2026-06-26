@@ -56,7 +56,7 @@ export default function Profile() {
           <h1 className="font-serif text-2xl font-medium">{user?.name}</h1>
           <p className="text-sm text-[#999]">{user?.email}</p>
         </div>
-        <button onClick={logout}
+        <button onClick={async () => { await logout(); }}
                 className="ml-auto text-sm border rounded-full px-4 py-2 transition-colors hover:bg-[#fef2f2]"
                 style={{ color: '#e05252', borderColor: '#fecaca' }}>
           Sign Out

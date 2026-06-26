@@ -46,7 +46,7 @@ router.get('/stats', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 
@@ -81,7 +81,7 @@ router.get('/orders', async (req, res) => {
     res.json({ orders: populated, total });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 
@@ -96,7 +96,7 @@ router.get('/customers', async (req, res) => {
     res.json(safe);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 
@@ -107,7 +107,7 @@ router.get('/coupons', async (req, res) => {
     res.json(coupons);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 
@@ -153,7 +153,7 @@ router.post('/coupons', async (req, res) => {
     res.status(201).json({ success: true, data: newCoupon, message: 'Coupon rule created successfully!' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 
@@ -187,7 +187,7 @@ router.patch('/coupons/:idOrCode/status', async (req, res) => {
     res.json({ success: true, message: 'Coupon status modified successfully.' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 
@@ -216,7 +216,7 @@ router.delete('/coupons/:idOrCode', async (req, res) => {
     res.json({ success: true, message: 'Coupon rule deleted successfully.' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 

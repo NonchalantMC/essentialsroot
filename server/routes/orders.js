@@ -125,7 +125,7 @@ router.post('/guest/send-otp', async (req, res) => {
     res.status(200).json({ message: 'Verification SMS sent successfully' });
   } catch (err) {
     console.error('OTP send error:', err);
-    res.status(500).json({ message: err.message || 'Failed to send verification SMS' });
+    res.status(500).json({message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.'});
   }
 });
 
@@ -145,10 +145,14 @@ router.post('/guest/verify-otp', async (req, res) => {
       return res.status(400).json({ message: 'Verification code has expired. Please try again.' });
     }
 
+    // Invalidate the OTP immediately — prevents replay of the same code
+    // within the 5-minute window if intercepted or observed.
+    await OtpService.deleteById(otpRecord._id || otpRecord.id);
+
     res.status(200).json({ success: true, message: 'Phone number verified successfully' });
   } catch (err) {
     console.error("OTP Verification Internal Error:", err);
-    res.status(500).json({ message: err.message || 'Verification failed' });
+    res.status(500).json({message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.'});
   }
 });
 
@@ -215,7 +219,7 @@ router.get('/coupons/validate/:code', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ valid: false, message: err.message });
+    res.status(500).json({message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.'});
   }
 });
 
@@ -301,7 +305,7 @@ router.post('/', protect, async (req, res) => {
     res.status(201).json(order);
   } catch (err) {
     console.error(err);
-    res.status(400).json({ message: err.message });
+    res.status(400).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Bad request.' });
   }
 });
 
@@ -402,7 +406,7 @@ router.post('/guest', async (req, res) => {
     res.status(201).json(order);
   } catch (err) {
     console.error(err);
-    res.status(400).json({ message: err.message });
+    res.status(400).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Bad request.' });
   }
 });
 
@@ -417,7 +421,7 @@ router.get('/my', protect, async (req, res) => {
     res.json(orders);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.'});
   }
 });
 
@@ -435,7 +439,7 @@ router.get('/:orderNumber', protect, async (req, res) => {
     res.json(order);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.'});
   }
 });
 
@@ -464,7 +468,7 @@ router.patch('/:id/status', protect, adminOnly, async (req, res) => {
     res.json(updated);
   } catch (err) {
     console.error(err);
-    res.status(400).json({ message: err.message });
+    res.status(400).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Bad request.' });
   }
 });
 

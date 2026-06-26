@@ -88,7 +88,10 @@ router.post('/pesapal/initiate', optionalAuth, async (req, res) => {
     });
   } catch (err) {
     console.error('PesaPal initiate error:', err.message);
-    res.status(500).json({ message: 'Payment service error', error: err.message });
+    res.status(500).json({
+      message: 'Payment service error',
+      ...(process.env.NODE_ENV === 'development' && { error: err.message }),
+    });
   }
 });
 
@@ -128,28 +131,52 @@ router.get('/pesapal/callback', async (req, res) => {
 router.post('/pesapal/ipn', async (req, res) => {
   try {
     const { OrderTrackingId, OrderNotificationType, OrderMerchantReference } = req.body;
-    if (OrderNotificationType === 'IPNCHANGE') {
-      const [status, orders] = await Promise.all([
-        getTransactionStatus(OrderTrackingId),
-        OrderService.find({ pesapalOrderId: OrderTrackingId }, { limit: 1 }),
-      ]);
-      const order = orders[0];
-      if (order) {
-        const newStatus = mapPaymentStatus(status.payment_status_description);
-        if (order.paymentStatus !== newStatus) {
-          await OrderService.updateById(order._id || order.id, { paymentStatus: newStatus });
-          if (newStatus === 'paid') {
-            const fresh   = await OrderService.findById(order._id || order.id);
-            const contact = await getContact(fresh, null, null);
-            await handlePaid(fresh, contact);
-          }
-        }
+
+    // Always respond 200 immediately — PesaPal requires this to stop retries.
+    // Verification happens before any state change below.
+    res.json({
+      orderNotificationType:  OrderNotificationType,
+      orderTrackingId:        OrderTrackingId,
+      orderMerchantReference: OrderMerchantReference,
+      status: '200'
+    });
+
+    if (OrderNotificationType !== 'IPNCHANGE') return;
+    if (!OrderTrackingId || !OrderMerchantReference) return;
+
+    // Fetch the order first and verify the merchant reference matches
+    // what we stored at order creation — prevents an attacker from
+    // replaying a real OrderTrackingId against a different order.
+    const orders = await OrderService.find({ pesapalOrderId: OrderTrackingId }, { limit: 1 });
+    const order  = orders[0];
+
+    if (!order) {
+      console.warn(`IPN: No order found for tracking ID ${OrderTrackingId}`);
+      return;
+    }
+
+    // Verify the merchant reference matches what was stored on this order
+    if (order.pesapalMerchantRef && order.pesapalMerchantRef !== OrderMerchantReference) {
+      console.warn(`IPN: Merchant reference mismatch for order ${order.orderNumber}. Expected ${order.pesapalMerchantRef}, got ${OrderMerchantReference}`);
+      return;
+    }
+
+    // Re-verify the transaction status directly with PesaPal — never
+    // trust the IPN body alone to determine whether a payment succeeded.
+    const status    = await getTransactionStatus(OrderTrackingId);
+    const newStatus = mapPaymentStatus(status.payment_status_description);
+
+    if (order.paymentStatus !== newStatus) {
+      await OrderService.updateById(order._id || order.id, { paymentStatus: newStatus });
+      if (newStatus === 'paid') {
+        const fresh   = await OrderService.findById(order._id || order.id);
+        const contact = await getContact(fresh, null, null);
+        await handlePaid(fresh, contact);
       }
     }
-    res.json({ orderNotificationType: OrderNotificationType, orderTrackingId: OrderTrackingId, orderMerchantReference: OrderMerchantReference, status: '200' });
   } catch (err) {
     console.error('IPN error:', err.message);
-    res.json({ status: '500', error: err.message });
+    // Response already sent above — nothing more to do
   }
 });
 
@@ -159,6 +186,19 @@ router.get('/pesapal/status/:orderNumber', optionalAuth, async (req, res) => {
     const orders = await OrderService.find({ orderNumber: req.params.orderNumber }, { limit: 1 });
     const order  = orders[0];
     if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    // Ownership check — must be the order's customer or an admin.
+    // Guests without a token are allowed only if the order has no customerId
+    // (i.e. a guest order that was never linked to an account).
+    const requesterId = req.user?._id || req.user?.id || null;
+    const isAdmin     = req.user?.role === 'admin';
+    const isOwner     = requesterId && order.customerId === requesterId;
+    const isGuest     = !order.customerId;
+
+    if (!isAdmin && !isOwner && !isGuest) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
     if (!order.pesapalOrderId) return res.json({ paymentStatus: order.paymentStatus, orderStatus: order.orderStatus });
 
     const status    = await getTransactionStatus(order.pesapalOrderId);

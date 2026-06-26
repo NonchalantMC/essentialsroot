@@ -17,18 +17,15 @@ async function verifyCouponLogic(code, subtotal, customerId = null, customerPhon
   const cleanedCode = String(code).toUpperCase().trim();
   const coupon = await CouponService.findOne({ code: cleanedCode });
 
-  if (!coupon) {
-    return { valid: false, message: 'Invalid promo code.' };
-  }
-  if (coupon.isActive === false || coupon.status === 'inactive') {
-    return { valid: false, message: 'This promo code is no longer active.' };
-  }
-  if (coupon.expiresAt && new Date() > new Date(coupon.expiresAt)) {
-    return { valid: false, message: 'This promo code has expired.' };
-  }
-  if (coupon.usageLimit && (coupon.usageCount || coupon.currentClaims || 0) >= coupon.usageLimit) {
-    return { valid: false, message: 'This promo code usage limit has been reached.' };
-  }
+  // Single generic message for all invalid/inactive/expired/limit states.
+  // Distinct messages would let an attacker distinguish which codes exist
+  // in the system by observing different error responses (timing oracle).
+  const INVALID_MSG = 'Invalid or expired promo code.';
+
+  if (!coupon)                                                                  return { valid: false, message: INVALID_MSG };
+  if (coupon.isActive === false || coupon.status === 'inactive')                return { valid: false, message: INVALID_MSG };
+  if (coupon.expiresAt && new Date() > new Date(coupon.expiresAt))              return { valid: false, message: INVALID_MSG };
+  if (coupon.usageLimit && (coupon.usageCount || coupon.currentClaims || 0) >= coupon.usageLimit) return { valid: false, message: INVALID_MSG };
   if (subtotal < (coupon.minSubtotalRequired || coupon.minTotal || 0)) {
     return {
       valid: false,
@@ -135,7 +132,7 @@ router.post('/validate', optionalAuth, async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 
@@ -181,7 +178,7 @@ router.post('/', protect, adminOnly, async (req, res) => {
     res.status(201).json({ success: true, data: newCoupon, message: 'Coupon rule created successfully!' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 

@@ -14,8 +14,8 @@ const DEFAULT_HERO = {
   stat1: { value: '500+', label: 'Products'   },
   stat2: { value: '4.8★', label: 'Avg Rating' },
   stat3: { value: '1K+',  label: 'Customers'  },
-  images: [],  // intentionally empty — prevents stale placeholder images from being
-               // written to Firestore if the _config/hero document is ever recreated
+  images: [],  
+               
 };
 
 // GET /api/hero — public
@@ -29,7 +29,7 @@ router.get('/', async (req, res) => {
     }
     res.json(doc.data());
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 
@@ -40,7 +40,7 @@ router.put('/', protect, adminOnly, async (req, res) => {
     await HERO_DOC.set(data);
     res.json(data);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(400).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Bad request.' });
   }
 });
 

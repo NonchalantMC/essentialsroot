@@ -44,7 +44,7 @@ router.get('/', async (req, res) => {
     const total = products.length;
     res.json({ products, total, pagination: { page: Number(page), limit: Number(limit), total } });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 
@@ -57,7 +57,7 @@ router.get('/:slug', async (req, res) => {
     if (!product) return res.status(404).json({ message: 'Product not found' });
     res.json(product);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 
@@ -82,7 +82,7 @@ router.post('/', protect, adminOnly, async (req, res) => {
     });
     res.status(201).json(product);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(400).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Bad request.' });
   }
 });
 
@@ -93,7 +93,7 @@ router.patch('/:id', protect, adminOnly, async (req, res) => {
     if (!product) return res.status(404).json({ message: 'Product not found' });
     res.json(product);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(400).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Bad request.' });
   }
 });
 
@@ -103,7 +103,7 @@ router.delete('/:id', protect, adminOnly, async (req, res) => {
     await ProductService.deleteById(req.params.id);
     res.json({ message: 'Product deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
   }
 });
 
