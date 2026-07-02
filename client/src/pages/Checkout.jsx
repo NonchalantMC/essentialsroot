@@ -27,8 +27,8 @@ const PAYMENT_METHODS = [
     name: 'Mobile Money',
     sub: 'MTN MoMo or Airtel Money',
     logos: [
-      { src: 'public/images/mtn.webp',    alt: 'MTN MoMo'     },
-      { src: 'public/images/airtel.webp', alt: 'Airtel Money' },
+      { src: '/images/mtn.webp',    alt: 'MTN MoMo'     },
+      { src: '/images/airtel.webp', alt: 'Airtel Money' },
     ],
   },
   {
@@ -36,8 +36,8 @@ const PAYMENT_METHODS = [
     name: 'Visa / Mastercard',
     sub: 'Secure card payment',
     logos: [
-      { src: 'public/images/visa.webp',       alt: 'Visa'       },
-      { src: 'public/images/Mastercard.webp', alt: 'Mastercard' },
+      { src: '/images/visa.webp',       alt: 'Visa'       },
+      { src: '/images/Mastercard.webp', alt: 'Mastercard' },
     ],
   },
 ];
@@ -788,11 +788,11 @@ export default function Checkout() {
               </div>
               <p className="text-[11px] mb-5" style={{ color:'var(--ink-soft)' }}>VAT inclusive where applicable</p>
               <div className="flex flex-wrap gap-1.5 justify-center">
-                <img src="public/images/mtn.webp"       alt="MTN MoMo"   className="h-5 w-auto object-contain" />
-                <img src="public/images/airtel.webp"    alt="Airtel"      className="h-5 w-auto object-contain" />
-                <img src="public/images/visa.webp"      alt="Visa"        className="h-5 w-auto object-contain" />
-                <img src="public/images/Mastercard.webp" alt="Mastercard" className="h-5 w-auto object-contain" />
-                <img src="public/images/pesapal.webp"   alt="PesaPal"     className="h-5 w-auto object-contain" />
+                <img src="/images/pesapal.webp"   alt="PesaPal"     className="h-5 w-auto object-contain" />
+                <img src="/images/mtn.webp"       alt="MTN MoMo"   className="h-5 w-auto object-contain" />
+                <img src="/images/airtel.webp"    alt="Airtel"      className="h-5 w-auto object-contain" />
+                <img src="/images/visa.webp"      alt="Visa"        className="h-5 w-auto object-contain" />
+                <img src="/images/Mastercard.webp" alt="Mastercard" className="h-5 w-auto object-contain" />
               </div>
             </div>
           </div>
