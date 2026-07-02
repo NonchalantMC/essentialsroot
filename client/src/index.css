@@ -1,5 +1,4 @@
 @import url('https://fonts.cdnfonts.com/css/circular-std');
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&display=swap');
 
 
 @tailwind base;
@@ -42,7 +41,7 @@
 
 @layer components {
   /* ── Typography ── */
-  .font-serif { font-family: 'Cormorant Garamond', Georgia, serif !important; }
+  /* .font-serif removed — brand uses sans-serif only */
 
   /* ── Primary button (teal) ── */
   .btn-primary {

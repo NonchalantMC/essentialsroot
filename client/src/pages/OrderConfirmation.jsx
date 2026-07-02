@@ -35,7 +35,7 @@ export default function OrderConfirmation() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-        <h1 className="font-serif text-4xl text-sage-600 mb-2">Order Confirmed!</h1>
+        <h1 className="font-semibold text-4xl text-sage-600 mb-2">Order Confirmed!</h1>
         <p className="text-gray-500 text-lg mb-8">
           Thank you for shopping with Essentials256. We'll send updates to your email.
         </p>

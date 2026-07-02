@@ -6,7 +6,8 @@ const { protect, adminOnly } = require('../middleware/auth');
 const UserService    = new FirestoreService('users');
 const ProductService = new FirestoreService('products');
 const OrderService   = new FirestoreService('orders');
-const CouponService  = new FirestoreService('coupons');
+const CouponService      = new FirestoreService('coupons');
+const RedemptionService  = new FirestoreService('couponRedemptions');
 
 router.use(protect, adminOnly);
 
@@ -188,6 +189,26 @@ router.patch('/coupons/:idOrCode/status', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error. Please try again.' });
+  }
+});
+
+// GET /api/admin/coupons/:idOrCode/redemptions
+// Returns the full usage audit trail for a specific coupon — who used it,
+// when, on which order, and whether they were a guest or registered user.
+router.get('/coupons/:idOrCode/redemptions', async (req, res) => {
+  try {
+    const { idOrCode } = req.params;
+    const cleanedCode  = String(idOrCode).toUpperCase().trim();
+
+    const redemptions  = await RedemptionService.find(
+      { couponCode: cleanedCode },
+      { limit: 200, orderBy: 'redeemedAt', orderDir: 'desc' }
+    );
+
+    res.json(redemptions);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error.' });
   }
 });
 

@@ -85,7 +85,7 @@ export default function AdminHero() {
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h2 className="font-serif text-2xl font-medium mb-1">Hero Section</h2>
+          <h2 className="font-semibold text-2xl font-medium mb-1">Hero Section</h2>
           <p className="text-sm text-[#999]">Edit the homepage hero banner — changes go live instantly on save.</p>
         </div>
         <button onClick={handleSave} disabled={saving}

@@ -4,9 +4,10 @@ const { admin } = require('../config/firebase');
 const FirestoreService = require('../services/FirestoreService');
 const { protect, adminOnly, optionalAuth } = require('../middleware/auth');
 
-const CouponService = new FirestoreService('coupons');
-const OrderService  = new FirestoreService('orders');
-const UserService   = new FirestoreService('users');
+const CouponService      = new FirestoreService('coupons');
+const OrderService       = new FirestoreService('orders');
+const UserService        = new FirestoreService('users');
+const RedemptionService  = new FirestoreService('couponRedemptions');
 
 // ─── SINGLE SOURCE OF TRUTH: coupon validation ────────────────────────────────
 // All coupon logic — rules checks, per-customer deduplication, discount math —
@@ -83,7 +84,16 @@ async function verifyCouponLogic(code, subtotal, customerId = null, customerPhon
 // orders that actually complete. Uses FieldValue.increment() so concurrent
 // checkouts with the same limited-use coupon can't both read the same count and
 // each write count+1 (the race condition the old read-add-write pattern had).
-async function applyCouponToOrder(couponCode, subtotal, customerId = null, customerPhone = null) {
+async function applyCouponToOrder(couponCode, subtotal, customerId = null, customerPhone = null, orderContext = {}) {
+  // Require at least one identity anchor — without either a customerId or a
+  // phone number we can't run the per-customer deduplication check, which
+  // means the same coupon could be used unlimited times by anonymous guests.
+  if (!customerId && !customerPhone) {
+    const err = new Error('A phone number is required to apply a promo code.');
+    err.status = 400;
+    throw err;
+  }
+
   const result = await verifyCouponLogic(couponCode, subtotal, customerId, customerPhone);
 
   if (!result.valid) {
@@ -92,6 +102,7 @@ async function applyCouponToOrder(couponCode, subtotal, customerId = null, custo
     throw err;
   }
 
+  // Atomically increment usage counters
   await admin.firestore()
     .collection('coupons')
     .doc(String(result.couponDocId))
@@ -101,11 +112,71 @@ async function applyCouponToOrder(couponCode, subtotal, customerId = null, custo
       usesCount:     admin.firestore.FieldValue.increment(1),
     });
 
+  // Write a redemption record — this is the audit trail that lets you see
+  // exactly who used each coupon, when, and on which order.
+  await RedemptionService.create({
+    couponCode:    result.couponCode,
+    couponDocId:   result.couponDocId,
+    customerId:    customerId   || null,
+    customerPhone: customerPhone || null,
+    customerType:  customerId ? 'registered' : 'guest',
+    discountAmount:result.discount,
+    subtotal,
+    orderNumber:   orderContext.orderNumber || null,
+    redeemedAt:    new Date().toISOString(),
+  });
+
   return {
     discountAmount: result.discount,
     appliedCoupon:  result.couponCode,
   };
 }
+
+// GET /api/coupons/available (logged-in users — returns eligible clickable coupons)
+// Returns active, non-expired coupons the requesting user hasn't already used.
+// Guests are not served this endpoint — they have no order history to check against.
+router.get('/available', optionalAuth, async (req, res) => {
+  try {
+    const userId = req.user?._id || req.user?.id || null;
+    if (!userId) return res.json([]);
+
+    const now = new Date();
+    const allCoupons = await CouponService.find(
+      { isActive: true },
+      { limit: 50, orderBy: 'createdAt', orderDir: 'desc' }
+    );
+
+    // Filter to coupons that are still valid
+    const activeCoupons = allCoupons.filter(c =>
+      c.status !== 'inactive' &&
+      (!c.expiresAt || new Date(c.expiresAt) > now) &&
+      (!c.usageLimit || (c.usageCount || c.currentClaims || 0) < c.usageLimit)
+    );
+
+    // Exclude any the user has already used in a non-cancelled order
+    const userOrders = await OrderService.find({ customerId: userId });
+    const usedCodes  = new Set(
+      userOrders
+        .filter(o => o.orderStatus !== 'cancelled' && o.couponCode)
+        .map(o => o.couponCode)
+    );
+
+    const eligible = activeCoupons
+      .filter(c => !usedCodes.has(c.code))
+      .map(c => ({
+        code:                c.code,
+        discountType:        c.discountType || c.type,
+        discountValue:       c.discountValue || c.value,
+        minSubtotalRequired: c.minSubtotalRequired || c.minTotal || 0,
+        expiresAt:           c.expiresAt || null,
+      }));
+
+    res.json(eligible);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: process.env.NODE_ENV === 'development' ? err.message : 'Server error.' });
+  }
+});
 
 // POST /api/coupons/validate (coupon apply button in checkout)
 router.post('/validate', optionalAuth, async (req, res) => {

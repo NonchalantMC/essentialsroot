@@ -9,7 +9,7 @@ function StaticPage({ title, children }) {
         {' '}/{' '}
         <span>{title}</span>
       </div>
-      <h1 className="font-serif text-4xl font-medium mb-8" style={{color:'#141414'}}>{title}</h1>
+      <h1 className="font-semibold text-4xl font-medium mb-8" style={{color:'#141414'}}>{title}</h1>
       <div className="prose prose-sm max-w-none text-[#5a5a5a] leading-relaxed space-y-5">
         {children}
       </div>

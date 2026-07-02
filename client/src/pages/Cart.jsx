@@ -11,7 +11,7 @@ export default function Cart() {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 px-4">
         <div className="text-6xl">🛒</div>
-        <h2 className="font-serif text-2xl" style={{ color: 'var(--ink)' }}>Your cart is empty</h2>
+        <h2 className="font-semibold text-2xl" style={{ color: 'var(--ink)' }}>Your cart is empty</h2>
         <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>Browse our collection and add items you love</p>
         <Link to="/"
               className="rounded-full px-6 py-3 text-sm font-semibold text-white transition-colors"
@@ -24,7 +24,7 @@ export default function Cart() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
-      <h1 className="font-serif text-3xl mb-8" style={{ color: 'var(--ink)' }}>
+      <h1 className="font-semibold text-3xl mb-8" style={{ color: 'var(--ink)' }}>
         Shopping Cart{' '}
         <span className="text-lg font-sans font-normal ml-2" style={{ color: 'var(--ink-soft)' }}>
           ({items.length} item{items.length !== 1 ? 's' : ''})

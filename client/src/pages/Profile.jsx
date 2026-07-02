@@ -53,7 +53,7 @@ export default function Profile() {
           {user?.name?.[0]?.toUpperCase() || '?'}
         </div>
         <div>
-          <h1 className="font-serif text-2xl font-medium">{user?.name}</h1>
+          <h1 className="font-semibold text-2xl font-medium">{user?.name}</h1>
           <p className="text-sm text-[#999]">{user?.email}</p>
         </div>
         <button onClick={async () => { await logout(); }}

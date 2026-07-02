@@ -1104,8 +1104,12 @@ function CouponsAdmin() {
   const [discountValue, setDiscountValue] = useState('');
   const [minCartAmount, setMinCartAmount] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
-  const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [expiryTime, setExpiryTime] = useState('23:59');
+  const [error,        setError]        = useState('');
+  const [submitting,   setSubmitting]   = useState(false);
+  const [expandedCode, setExpandedCode] = useState(null);   // which coupon row is expanded
+  const [redemptions,  setRedemptions]  = useState({});     // { [code]: [...] }
+  const [loadingRed,   setLoadingRed]   = useState(null);   // code currently loading
 
   const fetchCoupons = () => {
     setLoading(true);
@@ -1122,6 +1126,21 @@ function CouponsAdmin() {
 
   useEffect(fetchCoupons, []);
 
+  const toggleRedemptions = async (code) => {
+    if (expandedCode === code) { setExpandedCode(null); return; }
+    setExpandedCode(code);
+    if (redemptions[code]) return; // already loaded
+    setLoadingRed(code);
+    try {
+      const { data } = await api.get(`/admin/coupons/${code}/redemptions`);
+      setRedemptions(prev => ({ ...prev, [code]: data }));
+    } catch {
+      setRedemptions(prev => ({ ...prev, [code]: [] }));
+    } finally {
+      setLoadingRed(null);
+    }
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!code || !discountValue) {
@@ -1133,18 +1152,25 @@ function CouponsAdmin() {
     setError('');
 
     try {
+      // Combine date and time into a single ISO timestamp so the coupon
+      // expires at the exact minute the admin intends, not just midnight.
+      const expiresAt = expiryDate
+        ? new Date(`${expiryDate}T${expiryTime || '23:59'}:00`).toISOString()
+        : null;
+
       await api.post('/admin/coupons', {
         code,
         discountType,
         discountValue,
         minSubtotalRequired: minCartAmount,
-        expiresAt: expiryDate
+        expiresAt,
       });
 
       setCode('');
       setDiscountValue('');
       setMinCartAmount('');
       setExpiryDate('');
+      setExpiryTime('23:59');
       fetchCoupons();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create coupon rule.');
@@ -1241,13 +1267,28 @@ function CouponsAdmin() {
             </div>
 
             <div>
-              <label className={labelCls}>Expiry Date</label>
-              <input 
-                type="date" 
-                value={expiryDate} 
-                onChange={e => setExpiryDate(e.target.value)}
-                className={inputCls} 
-              />
+              <label className={labelCls}>Expiry Date &amp; Time</label>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={expiryDate}
+                  onChange={e => setExpiryDate(e.target.value)}
+                  className={inputCls}
+                  style={{ flex: 2 }}
+                />
+                <input
+                  type="time"
+                  value={expiryTime}
+                  onChange={e => setExpiryTime(e.target.value)}
+                  className={inputCls}
+                  style={{ flex: 1 }}
+                />
+              </div>
+              {expiryDate && (
+                <p className="text-[10px] mt-1" style={{ color:'var(--ink-soft,#999)' }}>
+                  Expires: {new Date(`${expiryDate}T${expiryTime || '23:59'}:00`).toLocaleString('en-UG', { dateStyle:'medium', timeStyle:'short' })}
+                </p>
+              )}
             </div>
 
             <button 
@@ -1311,6 +1352,12 @@ function CouponsAdmin() {
                           </span>
                         </td>
                         <td className="py-3.5 text-right space-x-3">
+                          <button
+                            onClick={() => toggleRedemptions(coupon.code)}
+                            className="text-xs text-[#5a7ab0] hover:underline font-medium"
+                          >
+                            {expandedCode === coupon.code ? 'Hide' : 'History'}
+                          </button>
                           <button 
                             onClick={() => handleToggleStatus(targetIdentifier, isRowActive)}
                             className="text-xs text-[#2C5F2D] hover:underline font-medium"
@@ -1325,7 +1372,57 @@ function CouponsAdmin() {
                           </button>
                         </td>
                       </tr>
-                    );
+                    )
+
+                      {/* Expandable redemption history */}
+                      {expandedCode === coupon.code && (
+                        <tr key={`${rowKey}-history`}>
+                          <td colSpan={5} className="pb-4 px-0">
+                            <div className="mx-0 rounded-xl border p-4" style={{ background:'#f8faf8', borderColor:'#c8e6c9' }}>
+                              <div className="text-[11px] font-bold uppercase tracking-wide mb-3" style={{ color:'#2C5F2D' }}>
+                                📋 Redemption History — {coupon.code}
+                              </div>
+                              {loadingRed === coupon.code ? (
+                                <div className="text-xs text-[#999] py-2">Loading...</div>
+                              ) : !redemptions[coupon.code]?.length ? (
+                                <div className="text-xs text-[#999] py-2">No redemptions yet for this coupon.</div>
+                              ) : (
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="text-[10px] text-[#999] uppercase tracking-wide border-b border-[#e8f5e9]">
+                                      <th className="pb-2 font-medium text-left">Order</th>
+                                      <th className="pb-2 font-medium text-left">Customer</th>
+                                      <th className="pb-2 font-medium text-left">Type</th>
+                                      <th className="pb-2 font-medium text-left">Discount</th>
+                                      <th className="pb-2 font-medium text-left">Date</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-[#f1f8f1]">
+                                    {redemptions[coupon.code].map((r, i) => (
+                                      <tr key={i} className="hover:bg-[#f1f8f1]">
+                                        <td className="py-2 font-medium text-[#2C5F2D]">{r.orderNumber || '—'}</td>
+                                        <td className="py-2 text-[#5a5a5a]">{r.customerPhone || r.customerId?.slice(0,8) || '—'}</td>
+                                        <td className="py-2">
+                                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${r.customerType === 'guest' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+                                            {r.customerType || 'unknown'}
+                                          </span>
+                                        </td>
+                                        <td className="py-2 font-semibold" style={{ color:'#1e805f' }}>
+                                          UGX {Number(r.discountAmount || 0).toLocaleString()}
+                                        </td>
+                                        <td className="py-2 text-[#999]">
+                                          {r.redeemedAt ? new Date(r.redeemedAt).toLocaleDateString('en-UG', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    ;
                   })}
                 </tbody>
               </table>

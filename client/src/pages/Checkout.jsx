@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -22,9 +22,24 @@ const inputCls = "w-full px-4 py-3 border border-[#ede9e2] rounded-xl text-sm ou
 const labelCls = "block text-[11px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-1.5";
 
 const PAYMENT_METHODS = [
-  { id:'momo',   icon:'📱', name:'Mobile Money',     sub:'Pay Via MTN or Airtel Wallet' },
-  { id:'card',   icon:'💳', name:'Visa / Mastercard', sub:'Secure card payment'      },
-  { id:'bank',   icon:'🏦', name:'Bank Transfer',     sub:'Direct bank transfer'     },
+  {
+    id: 'momo',
+    name: 'Mobile Money',
+    sub: 'MTN MoMo or Airtel Money',
+    logos: [
+      { src: '/images/mtn.webp',    alt: 'MTN MoMo'     },
+      { src: '/images/airtel.webp', alt: 'Airtel Money' },
+    ],
+  },
+  {
+    id: 'card',
+    name: 'Visa / Mastercard',
+    sub: 'Secure card payment',
+    logos: [
+      { src: '/images/visa.webp',       alt: 'Visa'       },
+      { src: '/images/Mastercard.webp', alt: 'Mastercard' },
+    ],
+  },
 ];
 
 function SmsModal({ phone, onVerified, onClose }) {
@@ -121,9 +136,14 @@ export default function Checkout() {
   const [loading,      setLoading]      = useState(false);
 
   // ── STEP 5: Coupon State Management Engine ──
-  const [couponCode,    setCouponCode]    = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState(null);
-  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponCode,       setCouponCode]       = useState('');
+  const [appliedCoupon,    setAppliedCoupon]    = useState(null);
+  const [couponLoading,    setCouponLoading]    = useState(false);
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+
+  // Pre-fill from the user's default saved address if available
+  const defaultAddress = user?.addresses?.find(a => a.isDefault) || user?.addresses?.[0] || null;
+  const [differentAddress, setDifferentAddress] = useState(false);
 
   const { register, handleSubmit, watch, formState:{ errors } } = useForm({
     resolver: zodResolver(schema),
@@ -131,7 +151,7 @@ export default function Checkout() {
       firstName: user?.name?.split(' ')[0] || '',
       lastName:  user?.name?.split(' ').slice(1).join(' ') || '',
       phone:     user?.phone || '',
-      city:      '',
+      city:      user?.addresses?.find(a => a.isDefault)?.city || user?.addresses?.[0]?.city || '',
     },
   });
 
@@ -147,19 +167,30 @@ export default function Checkout() {
   // so we trust it rather than re-deriving it here.
   const discountAmount = appliedCoupon ? appliedCoupon.discount : 0;
 
+  // Fetch coupons the logged-in user is eligible for — shown as one-click chips
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    api.get('/coupons/available')
+      .then(({ data }) => setAvailableCoupons(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [isLoggedIn]);
+
   const dynamicTotal = Math.max(0, (subtotal - discountAmount) + deliveryInfo.fee);
 
   const requiresVerification = guestMode === 'sms' && !smsVerified;
   const isPayDisabled = loading || requiresVerification;
 
   // ── STEP 5: Async Coupon Verification API Pipeline ──
-  const handleApplyCoupon = async (e) => {
-    e.preventDefault();
-    if (!couponCode.trim()) return;
+  // Accepts an optional codeOverride so chip clicks can apply a code
+  // directly without the user having to type it into the text input.
+  const handleApplyCoupon = async (codeOverride) => {
+    // If called from form submit button, codeOverride is a SyntheticEvent — ignore it
+    const codeToApply = typeof codeOverride === 'string' ? codeOverride : couponCode.trim();
+    if (!codeToApply) return;
     setCouponLoading(true);
     try {
       const { data } = await api.post('/coupons/validate', {
-        code: couponCode.trim(),
+        code: codeToApply,
         subtotal,
         phone: phoneValue || null
       });
@@ -323,25 +354,53 @@ export default function Checkout() {
                   <div className="bg-white border rounded-2xl p-6" style={{ borderColor:'var(--border)' }}>
                     <h2 className="font-semibold text-base mb-5 pb-3 border-b" style={{ color:'var(--ink)', borderColor:'var(--bone)' }}>1. Contact Information</h2>
                     <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className={labelCls}>First Name</label>
-                          <input {...register('firstName')} className={inputCls} placeholder="Jane" />
-                          {errors.firstName && <p className="text-xs mt-1" style={{ color:'#e05252' }}>{errors.firstName.message}</p>}
+                      {isLoggedIn ? (
+                        /* Logged-in: show name as read-only — no need to retype it */
+                        <div className="flex items-center gap-3 px-4 py-3 rounded-xl border" style={{ background:'var(--bone)', borderColor:'var(--border)' }}>
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background:'var(--teal)' }}>
+                            {user?.name?.charAt(0)?.toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold" style={{ color:'var(--ink)' }}>{user?.name}</div>
+                            <div className="text-xs" style={{ color:'var(--ink-soft)' }}>Delivering to your account name</div>
+                          </div>
                         </div>
-                        <div>
-                          <label className={labelCls}>Last Name</label>
-                          <input {...register('lastName')} className={inputCls} placeholder="Doe" />
-                          {errors.lastName && <p className="text-xs mt-1" style={{ color:'#e05252' }}>{errors.lastName.message}</p>}
+                      ) : (
+                        /* Guest: editable name fields */
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className={labelCls}>First Name</label>
+                            <input {...register('firstName')} className={inputCls} placeholder="Jane" />
+                            {errors.firstName && <p className="text-xs mt-1" style={{ color:'#e05252' }}>{errors.firstName.message}</p>}
+                          </div>
+                          <div>
+                            <label className={labelCls}>Last Name</label>
+                            <input {...register('lastName')} className={inputCls} placeholder="Doe" />
+                            {errors.lastName && <p className="text-xs mt-1" style={{ color:'#e05252' }}>{errors.lastName.message}</p>}
+                          </div>
                         </div>
-                      </div>
+                      )}
                       
                       <div>
-                        <label className={labelCls}>Phone Number {guestMode==='sms' && <span className="ml-1 font-normal normal-case" style={{ color:'var(--teal)' }}>— used for verification</span>}</label>
-                        <input {...register('phone')} type="tel" className={inputCls} placeholder="+256 700 123 456" />
-                        {errors.phone && <p className="text-xs mt-1" style={{ color:'#e05252' }}>{errors.phone.message}</p>}
-                        {guestMode==='sms' && !smsVerified && phoneValue?.replace(/\D/g,'').length >= 9 && (
-                          <button type="button" onClick={() => setShowSmsModal(true)} className="mt-2 text-xs font-semibold flex items-center gap-1 hover:underline" style={{ color:'var(--teal)' }}>📱 Tap to send verification SMS →</button>
+                        {isLoggedIn ? (
+                          /* Logged-in: phone is read-only — change it from Account Settings */
+                          <div>
+                            <label className={labelCls}>Phone Number</label>
+                            <div className="flex items-center justify-between px-4 py-3 rounded-xl border" style={{ background:'var(--bone)', borderColor:'var(--border)' }}>
+                              <span className="text-sm" style={{ color:'var(--ink)' }}>{user?.phone || 'No phone on account'}</span>
+                              <span className="text-[10px]" style={{ color:'var(--ink-soft)' }}>Change in Account Settings</span>
+                            </div>
+                          </div>
+                        ) : (
+                          /* Guest: editable phone with SMS verification */
+                          <div>
+                            <label className={labelCls}>Phone Number {guestMode==='sms' && <span className="ml-1 font-normal normal-case" style={{ color:'var(--teal)' }}>— used for verification</span>}</label>
+                            <input {...register('phone')} type="tel" className={inputCls} placeholder="+256 700 123 456" />
+                            {errors.phone && <p className="text-xs mt-1" style={{ color:'#e05252' }}>{errors.phone.message}</p>}
+                            {guestMode==='sms' && !smsVerified && phoneValue?.replace(/\D/g,'').length >= 9 && (
+                              <button type="button" onClick={() => setShowSmsModal(true)} className="mt-2 text-xs font-semibold flex items-center gap-1 hover:underline" style={{ color:'var(--teal)' }}>📱 Tap to send verification SMS →</button>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -351,11 +410,46 @@ export default function Checkout() {
                   <div className="bg-white border rounded-2xl p-6" style={{ borderColor:'var(--border)' }}>
                     <h2 className="font-semibold text-base mb-5 pb-3 border-b" style={{ color:'var(--ink)', borderColor:'var(--bone)' }}>2. Delivery Address</h2>
                     <div className="space-y-4">
-                      <div>
-                        <label className={labelCls}>Town</label>
-                        <input {...register('city')} className={inputCls} placeholder="e.g. Ntinda, Kisaasi, Seeta, Entebbe" />
-                        {errors.city && <p className="text-xs mt-1" style={{ color:'#e05252' }}>{errors.city.message}</p>}
-                      </div>
+
+                      {/* Show saved default address for logged-in users with one saved */}
+                      {isLoggedIn && defaultAddress && !differentAddress && (
+                        <div className="rounded-xl border p-4" style={{ background:'var(--teal-pale)', borderColor:'var(--teal)' }}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color:'var(--teal)' }}>📍 Saved Address</div>
+                              <div className="text-sm font-medium" style={{ color:'var(--ink)' }}>{defaultAddress.city}{defaultAddress.district ? `, ${defaultAddress.district}` : ''}</div>
+                              {defaultAddress.country && <div className="text-xs mt-0.5" style={{ color:'var(--ink-soft)' }}>{defaultAddress.country}</div>}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setDifferentAddress(true)}
+                              className="text-xs font-semibold whitespace-nowrap hover:underline flex-shrink-0"
+                              style={{ color:'var(--teal)' }}
+                            >
+                              Use different address
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Town input — always shown for guests, shown for logged-in when no default or choosing different */}
+                      {(!isLoggedIn || !defaultAddress || differentAddress) && (
+                        <div>
+                          {differentAddress && (
+                            <button
+                              type="button"
+                              onClick={() => setDifferentAddress(false)}
+                              className="text-xs font-semibold mb-3 hover:underline"
+                              style={{ color:'var(--teal)' }}
+                            >
+                              ← Use saved address instead
+                            </button>
+                          )}
+                          <label className={labelCls}>Town</label>
+                          <input {...register('city')} className={inputCls} placeholder="e.g. Ntinda, Kisaasi, Seeta, Entebbe" />
+                          {errors.city && <p className="text-xs mt-1" style={{ color:'#e05252' }}>{errors.city.message}</p>}
+                        </div>
+                      )}
 
                       <div className="rounded-xl p-4 border text-xs space-y-1.5 transition-all duration-300" 
                            style={{ 
@@ -386,9 +480,19 @@ export default function Checkout() {
                       {PAYMENT_METHODS.map(m => (
                         <label key={m.id} className="flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all" style={{ borderColor: selPayment===m.id ? 'var(--teal)' : 'var(--border)', background: selPayment===m.id ? 'var(--teal-pale)' : '' }}>
                           <input type="radio" name="paymentMethod" value={m.id} checked={selPayment===m.id} onChange={()=>setSelPayment(m.id)} className="accent-[#1e805f]" />
-                          <span className="text-2xl">{m.icon}</span>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {m.logos.map(logo => (
+                              <img
+                                key={logo.alt}
+                                src={logo.src}
+                                alt={logo.alt}
+                                className="h-7 w-auto object-contain rounded"
+                                style={{ maxWidth: '52px' }}
+                              />
+                            ))}
+                          </div>
                           <div>
-                            <div className="text-sm font-medium" style={{ color:'var(--ink)' }}>{m.name}</div>
+                            <div className="text-sm font-semibold" style={{ color:'var(--ink)' }}>{m.name}</div>
                             <div className="text-xs" style={{ color:'var(--ink-soft)' }}>{m.sub}</div>
                           </div>
                         </label>
@@ -396,7 +500,10 @@ export default function Checkout() {
                     </div>
                     <div className="flex items-start gap-3 rounded-xl p-4 text-sm" style={{ background:'#eff6ff', color:'var(--ink-mid)' }}>
                       <span className="text-lg flex-shrink-0">🔒</span>
-                      <p>Payments processed securely by <strong>PesaPal</strong> — East Africa's leading PCI-DSS Level 1 gateway.</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <img src="/images/pesapal.webp" alt="PesaPal" className="h-5 w-auto object-contain" />
+                        <p>Payments processed securely — East Africa's leading PCI-DSS Level 1 gateway.</p>
+                      </div>
                     </div>
                   </div>
 
@@ -421,6 +528,36 @@ export default function Checkout() {
               
               {/* ── STEP 5: Applied Coupon Input Component Block Layout ── */}
               <div className="mb-4">
+                {/* Available coupon chips — logged-in users only */}
+                {isLoggedIn && availableCoupons.length > 0 && !appliedCoupon && (
+                  <div className="mb-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-2">Your Available Coupons</div>
+                    <div className="flex flex-wrap gap-2">
+                      {availableCoupons.map(c => (
+                        <button
+                          key={c.code}
+                          type="button"
+                          onClick={() => handleApplyCoupon(c.code)}
+                          disabled={couponLoading}
+                          className="group flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all hover:border-[#1e805f] hover:bg-[#e8f5ef]"
+                          style={{ borderColor:'var(--border)', background:'var(--bone)', color:'var(--ink)' }}
+                        >
+                          <span className="text-sm">🎫</span>
+                          <div className="text-left">
+                            <div style={{ color:'#1e805f' }}>{c.code}</div>
+                            <div className="text-[10px] font-normal" style={{ color:'var(--ink-soft)' }}>
+                              {c.discountType === 'percentage'
+                                ? `${c.discountValue}% off`
+                                : `UGX ${Number(c.discountValue).toLocaleString()} off`}
+                              {c.minSubtotalRequired > 0 ? ` · min UGX ${Number(c.minSubtotalRequired).toLocaleString()}` : ''}
+                            </div>
+                          </div>
+                          <span className="ml-1 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity" style={{ color:'#1e805f' }}>Tap to apply →</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <label className="block text-[10px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-1.5">Promo Coupon</label>
                 {!appliedCoupon ? (
                   <div className="flex gap-2">
@@ -494,7 +631,11 @@ export default function Checkout() {
               </div>
               <p className="text-[11px] mb-5" style={{ color:'var(--ink-soft)' }}>VAT inclusive where applicable</p>
               <div className="flex flex-wrap gap-1.5 justify-center">
-                {['MTN MoMo','Airtel','Visa','Mastercard'].map(m => <span key={m} className="text-[9px] rounded px-2 py-1 border" style={{ background:'var(--bone)', borderColor:'var(--border)', color:'var(--ink-soft)' }}>{m}</span>)}
+                <img src="/images/mtn.webp"       alt="MTN MoMo"   className="h-5 w-auto object-contain" />
+                <img src="/images/airtel.webp"    alt="Airtel"      className="h-5 w-auto object-contain" />
+                <img src="/images/visa.webp"      alt="Visa"        className="h-5 w-auto object-contain" />
+                <img src="/images/Mastercard.webp" alt="Mastercard" className="h-5 w-auto object-contain" />
+                <img src="/images/pesapal.webp"   alt="PesaPal"     className="h-5 w-auto object-contain" />
               </div>
                   </div>
 
@@ -544,6 +685,36 @@ export default function Checkout() {
               
               {/* ── STEP 5: Applied Coupon Input Component Block Layout ── */}
               <div className="mb-4">
+                {/* Available coupon chips — logged-in users only */}
+                {isLoggedIn && availableCoupons.length > 0 && !appliedCoupon && (
+                  <div className="mb-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-2">Your Available Coupons</div>
+                    <div className="flex flex-wrap gap-2">
+                      {availableCoupons.map(c => (
+                        <button
+                          key={c.code}
+                          type="button"
+                          onClick={() => handleApplyCoupon(c.code)}
+                          disabled={couponLoading}
+                          className="group flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all hover:border-[#1e805f] hover:bg-[#e8f5ef]"
+                          style={{ borderColor:'var(--border)', background:'var(--bone)', color:'var(--ink)' }}
+                        >
+                          <span className="text-sm">🎫</span>
+                          <div className="text-left">
+                            <div style={{ color:'#1e805f' }}>{c.code}</div>
+                            <div className="text-[10px] font-normal" style={{ color:'var(--ink-soft)' }}>
+                              {c.discountType === 'percentage'
+                                ? `${c.discountValue}% off`
+                                : `UGX ${Number(c.discountValue).toLocaleString()} off`}
+                              {c.minSubtotalRequired > 0 ? ` · min UGX ${Number(c.minSubtotalRequired).toLocaleString()}` : ''}
+                            </div>
+                          </div>
+                          <span className="ml-1 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity" style={{ color:'#1e805f' }}>Tap to apply →</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <label className="block text-[10px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-1.5">Promo Coupon</label>
                 {!appliedCoupon ? (
                   <div className="flex gap-2">
@@ -617,7 +788,11 @@ export default function Checkout() {
               </div>
               <p className="text-[11px] mb-5" style={{ color:'var(--ink-soft)' }}>VAT inclusive where applicable</p>
               <div className="flex flex-wrap gap-1.5 justify-center">
-                {['MTN MoMo','Airtel','Visa','Mastercard'].map(m => <span key={m} className="text-[9px] rounded px-2 py-1 border" style={{ background:'var(--bone)', borderColor:'var(--border)', color:'var(--ink-soft)' }}>{m}</span>)}
+                <img src="public/images/mtn.webp"       alt="MTN MoMo"   className="h-5 w-auto object-contain" />
+                <img src="public/images/airtel.webp"    alt="Airtel"      className="h-5 w-auto object-contain" />
+                <img src="public/images/visa.webp"      alt="Visa"        className="h-5 w-auto object-contain" />
+                <img src="public/images/Mastercard.webp" alt="Mastercard" className="h-5 w-auto object-contain" />
+                <img src="public/images/pesapal.webp"   alt="PesaPal"     className="h-5 w-auto object-contain" />
               </div>
             </div>
           </div>
