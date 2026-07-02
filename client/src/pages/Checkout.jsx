@@ -27,8 +27,8 @@ const PAYMENT_METHODS = [
     name: 'Mobile Money',
     sub: 'MTN MoMo or Airtel Money',
     logos: [
-      { src: '/images/mtn.webp',    alt: 'MTN MoMo'     },
-      { src: '/images/airtel.webp', alt: 'Airtel Money' },
+      { src: 'public/images/mtn.webp',    alt: 'MTN MoMo'     },
+      { src: 'public/images/airtel.webp', alt: 'Airtel Money' },
     ],
   },
   {
@@ -36,8 +36,8 @@ const PAYMENT_METHODS = [
     name: 'Visa / Mastercard',
     sub: 'Secure card payment',
     logos: [
-      { src: '/images/visa.webp',       alt: 'Visa'       },
-      { src: '/images/Mastercard.webp', alt: 'Mastercard' },
+      { src: 'public/images/visa.webp',       alt: 'Visa'       },
+      { src: 'public/images/Mastercard.webp', alt: 'Mastercard' },
     ],
   },
 ];
