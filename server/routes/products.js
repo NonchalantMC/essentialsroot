@@ -4,6 +4,7 @@ const FirestoreService = require('../services/FirestoreService');
 const { protect, adminOnly } = require('../middleware/auth');
 
 const ProductService = new FirestoreService('products');
+const OrderService   = new FirestoreService('orders');
 
 // GET /api/products
 router.get('/', async (req, res) => {
@@ -11,7 +12,7 @@ router.get('/', async (req, res) => {
     const {
       type, status, featured, tags,
       limit = 20, page = 1, search,
-      minPrice, maxPrice,
+      minPrice, maxPrice, sort,
     } = req.query;
 
     const query = {};
@@ -40,6 +41,28 @@ router.get('/', async (req, res) => {
     }
     if (minPrice) products = products.filter(p => p.price >= Number(minPrice));
     if (maxPrice) products = products.filter(p => p.price <= Number(maxPrice));
+
+    // Best-selling sort: count how many times each product appears in paid orders
+    if (sort === 'best-selling') {
+      const paidOrders = await OrderService.find({ paymentStatus: 'paid' }, { limit: 500 });
+      const salesMap = {};
+      paidOrders.forEach(order => {
+        (order.items || []).forEach(item => {
+          const id = item.productId;
+          if (id) salesMap[id] = (salesMap[id] || 0) + (item.quantity || 1);
+        });
+      });
+      products = [...products].sort((a, b) => {
+        const idA = a._id || a.id;
+        const idB = b._id || b.id;
+        return (salesMap[idB] || 0) - (salesMap[idA] || 0);
+      });
+      // Attach salesCount to each product so frontend can optionally display it
+      products = products.map(p => ({
+        ...p,
+        salesCount: salesMap[p._id || p.id] || 0,
+      }));
+    }
 
     const total = products.length;
     res.json({ products, total, pagination: { page: Number(page), limit: Number(limit), total } });

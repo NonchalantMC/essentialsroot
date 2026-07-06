@@ -27,11 +27,7 @@ function calculateServerDeliveryFee(cityInput, subtotal) {
 
   if (!bestMatch) return { fee: 7000, label: "Zone 2 (Fallback)" };
 
-  const { zone, key } = bestMatch;
-  if (subtotal >= 200000) return { fee: 0, label: `${zone.label} (Free)` };
-  if (subtotal >= 100000 && (key === 'zone1' || key === 'zone2')) {
-    return { fee: 0, label: `${zone.label} (Free)` };
-  }
+  const { zone } = bestMatch;
 
   return { fee: zone.fee, label: zone.label };
 }

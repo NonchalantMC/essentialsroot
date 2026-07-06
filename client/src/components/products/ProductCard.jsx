@@ -76,7 +76,7 @@ export default function ProductCard({ product: p, index = 0 }) {
           <button onClick={handleQuickAdd}
                   className="quick-add absolute bottom-2 left-2 right-2 text-white text-xs font-semibold py-2 rounded-full text-center"
                   style={{ background: 'rgba(33,40,54,.88)', backdropFilter: 'blur(8px)' }}>
-            Quick Add
+            Add to Cart
           </button>
         </div>
 

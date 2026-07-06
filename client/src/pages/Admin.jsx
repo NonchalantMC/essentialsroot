@@ -1105,6 +1105,7 @@ function CouponsAdmin() {
   const [minCartAmount, setMinCartAmount] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [expiryTime, setExpiryTime] = useState('23:59');
+  const [couponType, setCouponType] = useState('promo');
   const [error,        setError]        = useState('');
   const [submitting,   setSubmitting]   = useState(false);
   const [expandedCode, setExpandedCode] = useState(null);   // which coupon row is expanded
@@ -1164,6 +1165,7 @@ function CouponsAdmin() {
         discountValue,
         minSubtotalRequired: minCartAmount,
         expiresAt,
+        couponType,
       });
 
       setCode('');
@@ -1171,6 +1173,7 @@ function CouponsAdmin() {
       setMinCartAmount('');
       setExpiryDate('');
       setExpiryTime('23:59');
+      setCouponType('promo');
       fetchCoupons();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create coupon rule.');
@@ -1230,6 +1233,38 @@ function CouponsAdmin() {
                 placeholder="E.g., SAVE20" 
                 className={inputCls} 
               />
+            </div>
+
+            <div>
+              <label className={labelCls}>Coupon Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCouponType('promo')}
+                  className="px-3 py-2.5 rounded-xl border text-sm font-semibold text-left transition-all"
+                  style={{
+                    borderColor: couponType === 'promo' ? '#2C5F2D' : '#ede9e2',
+                    background:  couponType === 'promo' ? '#e8f2e8' : 'white',
+                    color:       couponType === 'promo' ? '#2C5F2D' : '#5a5a5a',
+                  }}
+                >
+                  🎟️ Promo Code
+                  <div className="text-[10px] font-normal mt-0.5" style={{ color:'#999' }}>Manual entry only</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCouponType('welcome')}
+                  className="px-3 py-2.5 rounded-xl border text-sm font-semibold text-left transition-all"
+                  style={{
+                    borderColor: couponType === 'welcome' ? '#2C5F2D' : '#ede9e2',
+                    background:  couponType === 'welcome' ? '#e8f2e8' : 'white',
+                    color:       couponType === 'welcome' ? '#2C5F2D' : '#5a5a5a',
+                  }}
+                >
+                  👋 Welcome Coupon
+                  <div className="text-[10px] font-normal mt-0.5" style={{ color:'#999' }}>Shown to first-time users</div>
+                </button>
+              </div>
             </div>
 
             <div>
@@ -1333,6 +1368,13 @@ function CouponsAdmin() {
                       <tr key={rowKey} className="hover:bg-[#faf7f2]/50 transition-colors">
                         <td className="py-3.5 font-semibold text-[#141414] tracking-wider">
                           {coupon.code}
+                          <span className={`ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium normal-case tracking-normal ${
+                            coupon.couponType === 'welcome'
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-blue-50 text-blue-700 border border-blue-200'
+                          }`}>
+                            {coupon.couponType === 'welcome' ? '👋 Welcome' : '🎟️ Promo'}
+                          </span>
                         </td>
                         <td className="py-3.5 text-[#5a5a5a]">
                           {coupon.discountType === 'percentage' || coupon.type === 'percentage' 

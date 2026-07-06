@@ -44,11 +44,12 @@ export default function CartDrawer() {
                     <p className="font-medium" style={{color:'var(--ink)'}}>Your cart is empty</p>
                     <p className="text-sm mt-0.5" style={{color:'var(--ink-soft)'}}>Add items to get started</p>
                   </div>
-                  <button onClick={closeCart}
-                          className="mt-2 px-5 py-2.5 rounded-full text-sm font-medium text-white"
-                          style={{background:'var(--teal)'}}>
-                    Browse Products
-                  </button>
+                  <Link to="/products"
+                   onClick={closeCart}
+                       className="mt-2 px-5 py-2.5 rounded-full text-sm font-medium text-white inline-block text-center"
+                       style={{background:'var(--teal)'}}>
+                       Browse Products
+                  </Link>
                 </div>
               ) : (
                 <div className="space-y-1">
@@ -99,9 +100,14 @@ export default function CartDrawer() {
                       style={{background:'var(--ink)'}}>
                   🔒 Checkout via PesaPal
                 </Link>
-                <p className="text-center text-[11px]" style={{color:'var(--ink-soft)'}}>
-                  MTN MoMo · Airtel Money · Visa · Mastercard
-                </p>
+                <p className="text-[11px] mb-5" style={{ color:'var(--ink-soft)' }}></p>
+              <div className="flex flex-wrap gap-1.5 justify-center">
+                <img src="/images/pesapal.webp"   alt="PesaPal"     className="h-5 w-auto object-contain" />
+                <img src="/images/mtn.webp"       alt="MTN MoMo"   className="h-5 w-auto object-contain" />
+                <img src="/images/airtel.webp"    alt="Airtel"      className="h-5 w-auto object-contain" />
+                <img src="/images/visa.webp"      alt="Visa"        className="h-5 w-auto object-contain" />
+                <img src="/images/Mastercard.webp" alt="Mastercard" className="h-5 w-auto object-contain" />
+              </div>
               </div>
             )}
           </motion.div>

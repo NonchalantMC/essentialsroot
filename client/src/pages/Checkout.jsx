@@ -21,27 +21,6 @@ const schema = z.object({
 const inputCls = "w-full px-4 py-3 border border-[#ede9e2] rounded-xl text-sm outline-none focus:border-[#1e805f] focus:ring-2 focus:ring-[#1e805f]/10 transition-all bg-white";
 const labelCls = "block text-[11px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-1.5";
 
-const PAYMENT_METHODS = [
-  {
-    id: 'momo',
-    name: 'Mobile Money',
-    sub: 'MTN MoMo or Airtel Money',
-    logos: [
-      { src: '/images/mtn.webp',    alt: 'MTN MoMo'     },
-      { src: '/images/airtel.webp', alt: 'Airtel Money' },
-    ],
-  },
-  {
-    id: 'card',
-    name: 'Visa / Mastercard',
-    sub: 'Secure card payment',
-    logos: [
-      { src: '/images/visa.webp',       alt: 'Visa'       },
-      { src: '/images/Mastercard.webp', alt: 'Mastercard' },
-    ],
-  },
-];
-
 function SmsModal({ phone, onVerified, onClose }) {
   const [step,    setStep]    = useState('send');
   const [code,    setCode]    = useState('');
@@ -132,7 +111,7 @@ export default function Checkout() {
   const [guestMode,    setGuestMode]    = useState(isLoggedIn ? null : 'choice');
   const [smsVerified,  setSmsVerified]  = useState(false);
   const [showSmsModal, setShowSmsModal] = useState(false);
-  const [selPayment,   setSelPayment]   = useState('momo'); 
+  const [selPayment,   setSelPayment]   = useState('momo'); // Kept intact for the backend requirement payload
   const [loading,      setLoading]      = useState(false);
 
   // ── STEP 5: Coupon State Management Engine ──
@@ -162,18 +141,17 @@ export default function Checkout() {
   const deliveryInfo = getDeliveryFee(cityValue, subtotal);
 
   // ── STEP 5: Use Server-Computed Discount Directly ──
-  // The /coupons/validate response already returns the fully-computed
-  // discount (including any maxDiscountAmount capping applied server-side),
-  // so we trust it rather than re-deriving it here.
   const discountAmount = appliedCoupon ? appliedCoupon.discount : 0;
 
-  // Fetch coupons the logged-in user is eligible for — shown as one-click chips
+  // Fetch eligible coupons for logged-in users and verified guests.
   useEffect(() => {
-    if (!isLoggedIn) return;
-    api.get('/coupons/available')
+    const isVerifiedGuest = !isLoggedIn && smsVerified && phoneValue;
+    if (!isLoggedIn && !isVerifiedGuest) return;
+    const params = isVerifiedGuest ? { phone: phoneValue } : {};
+    api.get('/coupons/available', { params })
       .then(({ data }) => setAvailableCoupons(Array.isArray(data) ? data : []))
       .catch(() => {});
-  }, [isLoggedIn]);
+  }, [isLoggedIn, smsVerified, phoneValue]);
 
   const dynamicTotal = Math.max(0, (subtotal - discountAmount) + deliveryInfo.fee);
 
@@ -181,10 +159,7 @@ export default function Checkout() {
   const isPayDisabled = loading || requiresVerification;
 
   // ── STEP 5: Async Coupon Verification API Pipeline ──
-  // Accepts an optional codeOverride so chip clicks can apply a code
-  // directly without the user having to type it into the text input.
   const handleApplyCoupon = async (codeOverride) => {
-    // If called from form submit button, codeOverride is a SyntheticEvent — ignore it
     const codeToApply = typeof codeOverride === 'string' ? codeOverride : couponCode.trim();
     if (!codeToApply) return;
     setCouponLoading(true);
@@ -218,7 +193,6 @@ export default function Checkout() {
     if (!items.length) { showToast('Your cart is empty'); return; }
     setLoading(true);
     try {
-      // Removed email parameter from guestInfo structure mapping
       const guestInfo = !isLoggedIn ? {
         name:  `${formData.firstName} ${formData.lastName}`,
         phone: formData.phone,
@@ -237,8 +211,8 @@ export default function Checkout() {
           color:     i.color,
         })),
         subtotal,
-        discountAmount, // Inject calculated discount value into DB
-        couponCode: appliedCoupon ? appliedCoupon.code : null, // Save source coupon tracking identifier
+        discountAmount, 
+        couponCode: appliedCoupon ? appliedCoupon.code : null, 
         shippingFee: deliveryInfo.fee,
         total:       dynamicTotal,
         guestInfo,
@@ -355,7 +329,6 @@ export default function Checkout() {
                     <h2 className="font-semibold text-base mb-5 pb-3 border-b" style={{ color:'var(--ink)', borderColor:'var(--bone)' }}>1. Contact Information</h2>
                     <div className="space-y-4">
                       {isLoggedIn ? (
-                        /* Logged-in: show name as read-only — no need to retype it */
                         <div className="flex items-center gap-3 px-4 py-3 rounded-xl border" style={{ background:'var(--bone)', borderColor:'var(--border)' }}>
                           <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background:'var(--teal)' }}>
                             {user?.name?.charAt(0)?.toUpperCase()}
@@ -366,7 +339,6 @@ export default function Checkout() {
                           </div>
                         </div>
                       ) : (
-                        /* Guest: editable name fields */
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <label className={labelCls}>First Name</label>
@@ -383,7 +355,6 @@ export default function Checkout() {
                       
                       <div>
                         {isLoggedIn ? (
-                          /* Logged-in: phone is read-only — change it from Account Settings */
                           <div>
                             <label className={labelCls}>Phone Number</label>
                             <div className="flex items-center justify-between px-4 py-3 rounded-xl border" style={{ background:'var(--bone)', borderColor:'var(--border)' }}>
@@ -392,7 +363,6 @@ export default function Checkout() {
                             </div>
                           </div>
                         ) : (
-                          /* Guest: editable phone with SMS verification */
                           <div>
                             <label className={labelCls}>Phone Number {guestMode==='sms' && <span className="ml-1 font-normal normal-case" style={{ color:'var(--teal)' }}>— used for verification</span>}</label>
                             <input {...register('phone')} type="tel" className={inputCls} placeholder="+256 700 123 456" />
@@ -410,8 +380,6 @@ export default function Checkout() {
                   <div className="bg-white border rounded-2xl p-6" style={{ borderColor:'var(--border)' }}>
                     <h2 className="font-semibold text-base mb-5 pb-3 border-b" style={{ color:'var(--ink)', borderColor:'var(--bone)' }}>2. Delivery Address</h2>
                     <div className="space-y-4">
-
-                      {/* Show saved default address for logged-in users with one saved */}
                       {isLoggedIn && defaultAddress && !differentAddress && (
                         <div className="rounded-xl border p-4" style={{ background:'var(--teal-pale)', borderColor:'var(--teal)' }}>
                           <div className="flex items-start justify-between gap-3">
@@ -432,7 +400,6 @@ export default function Checkout() {
                         </div>
                       )}
 
-                      {/* Town input — always shown for guests, shown for logged-in when no default or choosing different */}
                       {(!isLoggedIn || !defaultAddress || differentAddress) && (
                         <div>
                           {differentAddress && (
@@ -473,173 +440,143 @@ export default function Checkout() {
                     </div>
                   </div>
 
-                  {/* Payment */}
-                  <div className="bg-white border rounded-2xl p-6" style={{ borderColor:'var(--border)' }}>
-                    <h2 className="font-semibold text-base mb-5 pb-3 border-b" style={{ color:'var(--ink)', borderColor:'var(--bone)' }}>3. Payment via PesaPal</h2>
-                    <div className="space-y-3 mb-4">
-                      {PAYMENT_METHODS.map(m => (
-                        <label key={m.id} className="flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all" style={{ borderColor: selPayment===m.id ? 'var(--teal)' : 'var(--border)', background: selPayment===m.id ? 'var(--teal-pale)' : '' }}>
-                          <input type="radio" name="paymentMethod" value={m.id} checked={selPayment===m.id} onChange={()=>setSelPayment(m.id)} className="accent-[#1e805f]" />
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            {m.logos.map(logo => (
-                              <img
-                                key={logo.alt}
-                                src={logo.src}
-                                alt={logo.alt}
-                                className="h-7 w-auto object-contain rounded"
-                                style={{ maxWidth: '52px' }}
-                              />
+                  {/* ── ORDER SUMMARY (mobile only) ── */}
+                  <div className="lg:hidden bg-white border rounded-2xl p-5 mt-2" style={{ borderColor:'var(--border)' }}>
+                    <h3 className="font-semibold text-base mb-4" style={{ color:'var(--ink)' }}>Order Summary</h3>
+                    <div className="space-y-3 mb-5">
+                      {items.map(item => (
+                        <div key={item.key} className="flex gap-3 items-center">
+                          <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border" style={{ background:'var(--cream)', borderColor:'var(--border)' }}>
+                            {item.product.images?.[0] ? <img src={item.product.images[0]} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xl">{item.product.type==='footwear'?'👠':'🏺'}</div>}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium line-clamp-1" style={{ color:'var(--ink)' }}>{item.product.name}</p>
+                            {item.size && <p className="text-[10px]" style={{ color:'var(--ink-soft)' }}>EU {item.size} × {item.qty}</p>}
+                          </div>
+                          <span className="text-xs font-semibold whitespace-nowrap" style={{ color:'var(--teal)' }}>{fmt(item.product.price * item.qty)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <hr className="mb-4" style={{ borderColor:'var(--border)' }} />
+                    
+                    <div className="mb-4">
+                      {(isLoggedIn || (smsVerified && !isLoggedIn)) && availableCoupons.length > 0 && !appliedCoupon && (
+                        <div className="mb-3">
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-2">🎉 Welcome Offer</div>
+                          <div className="flex flex-wrap gap-2">
+                            {availableCoupons.map(c => (
+                              <button
+                                key={c.code}
+                                type="button"
+                                onClick={() => handleApplyCoupon(c.code)}
+                                disabled={couponLoading}
+                                className="group flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all hover:border-[#1e805f] hover:bg-[#e8f5ef]"
+                                style={{ borderColor:'var(--border)', background:'var(--bone)', color:'var(--ink)' }}
+                              >
+                                <span className="text-sm">🎫</span>
+                                <div className="text-left">
+                                  <div style={{ color:'#1e805f' }}>{c.code}</div>
+                                  <div className="text-[10px] font-normal" style={{ color:'var(--ink-soft)' }}>
+                                    {c.discountType === 'percentage'
+                                      ? `${c.discountValue}% off`
+                                      : `UGX ${Number(c.discountValue).toLocaleString()} off`}
+                                    {c.minSubtotalRequired > 0 ? ` · min UGX ${Number(c.minSubtotalRequired).toLocaleString()}` : ''}
+                                  </div>
+                                </div>
+                                <span className="ml-1 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity" style={{ color:'#1e805f' }}>Tap to apply →</span>
+                              </button>
                             ))}
                           </div>
-                          <div>
-                            <div className="text-sm font-semibold" style={{ color:'var(--ink)' }}>{m.name}</div>
-                            <div className="text-xs" style={{ color:'var(--ink-soft)' }}>{m.sub}</div>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                    <div className="flex items-start gap-3 rounded-xl p-4 text-sm" style={{ background:'#eff6ff', color:'var(--ink-mid)' }}>
-                      <span className="text-lg flex-shrink-0">🔒</span>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <img src="/images/pesapal.webp" alt="PesaPal" className="h-5 w-auto object-contain" />
-                        <p>Payments processed securely — East Africa's leading PCI-DSS Level 1 gateway.</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* ── ORDER SUMMARY (mobile only — sits between PesaPal and pay button) ── */}
-                  <div className="lg:hidden bg-white border rounded-2xl p-5 mt-2" style={{ borderColor:'var(--border)' }}>
-              <h3 className="font-semibold text-base mb-4" style={{ color:'var(--ink)' }}>Order Summary</h3>
-              <div className="space-y-3 mb-5">
-                {items.map(item => (
-                  <div key={item.key} className="flex gap-3 items-center">
-                    <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border" style={{ background:'var(--cream)', borderColor:'var(--border)' }}>
-                      {item.product.images?.[0] ? <img src={item.product.images[0]} alt="" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xl">{item.product.type==='footwear'?'👠':'🏺'}</div>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium line-clamp-1" style={{ color:'var(--ink)' }}>{item.product.name}</p>
-                      {item.size && <p className="text-[10px]" style={{ color:'var(--ink-soft)' }}>EU {item.size} × {item.qty}</p>}
-                    </div>
-                    <span className="text-xs font-semibold whitespace-nowrap" style={{ color:'var(--teal)' }}>{fmt(item.product.price * item.qty)}</span>
-                  </div>
-                ))}
-              </div>
-              <hr className="mb-4" style={{ borderColor:'var(--border)' }} />
-              
-              {/* ── STEP 5: Applied Coupon Input Component Block Layout ── */}
-              <div className="mb-4">
-                {/* Available coupon chips — logged-in users only */}
-                {isLoggedIn && availableCoupons.length > 0 && !appliedCoupon && (
-                  <div className="mb-3">
-                    <div className="text-[10px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-2">Your Available Coupons</div>
-                    <div className="flex flex-wrap gap-2">
-                      {availableCoupons.map(c => (
-                        <button
-                          key={c.code}
-                          type="button"
-                          onClick={() => handleApplyCoupon(c.code)}
-                          disabled={couponLoading}
-                          className="group flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all hover:border-[#1e805f] hover:bg-[#e8f5ef]"
-                          style={{ borderColor:'var(--border)', background:'var(--bone)', color:'var(--ink)' }}
-                        >
-                          <span className="text-sm">🎫</span>
-                          <div className="text-left">
-                            <div style={{ color:'#1e805f' }}>{c.code}</div>
-                            <div className="text-[10px] font-normal" style={{ color:'var(--ink-soft)' }}>
-                              {c.discountType === 'percentage'
-                                ? `${c.discountValue}% off`
-                                : `UGX ${Number(c.discountValue).toLocaleString()} off`}
-                              {c.minSubtotalRequired > 0 ? ` · min UGX ${Number(c.minSubtotalRequired).toLocaleString()}` : ''}
+                        </div>
+                      )}
+                      <label className="block text-[10px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-1.5">Promo Coupon</label>
+                      {!appliedCoupon ? (
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            value={couponCode}
+                            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                            placeholder="E.g. EXTRA20" 
+                            className="flex-1 px-3 py-2 border rounded-xl text-xs uppercase outline-none focus:border-[#1e805f] bg-white transition-all"
+                            style={{ borderColor: 'var(--border)' }}
+                          />
+                          <button 
+                            type="button"
+                            onClick={handleApplyCoupon}
+                            disabled={couponLoading || !couponCode.trim()}
+                            className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-[#141414] hover:bg-[#222] transition-colors disabled:opacity-40"
+                          >
+                            {couponLoading ? '...' : 'Apply'}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between p-2.5 rounded-xl border text-xs" style={{ background: 'var(--teal-pale)', borderColor: 'var(--teal)' }}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm">🎫</span>
+                            <div>
+                              <span className="font-bold text-[#1e805f]">{appliedCoupon.code}</span>
+                              <span className="text-[10px] block text-gray-500">
+                                {appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discountValue}% Off Promo Applied` : `UGX ${appliedCoupon.discountValue?.toLocaleString()} Flat Value Subtracted`}
+                              </span>
                             </div>
                           </div>
-                          <span className="ml-1 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity" style={{ color:'#1e805f' }}>Tap to apply →</span>
-                        </button>
-                      ))}
+                          <button 
+                            type="button" 
+                            onClick={handleRemoveCoupon} 
+                            className="text-xs text-red-500 hover:text-red-700 font-medium px-1"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
-                <label className="block text-[10px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-1.5">Promo Coupon</label>
-                {!appliedCoupon ? (
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={couponCode}
-                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                      placeholder="E.g. EXTRA20" 
-                      className="flex-1 px-3 py-2 border rounded-xl text-xs uppercase outline-none focus:border-[#1e805f] bg-white transition-all"
-                      style={{ borderColor: 'var(--border)' }}
-                    />
-                    <button 
-                      type="button"
-                      onClick={handleApplyCoupon}
-                      disabled={couponLoading || !couponCode.trim()}
-                      className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-[#141414] hover:bg-[#222] transition-colors disabled:opacity-40"
-                    >
-                      {couponLoading ? '...' : 'Apply'}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between p-2.5 rounded-xl border text-xs" style={{ background: 'var(--teal-pale)', borderColor: 'var(--teal)' }}>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm">🎫</span>
-                      <div>
-                        <span className="font-bold text-[#1e805f]">{appliedCoupon.code}</span>
-                        <span className="text-[10px] block text-gray-500">
-                          {appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discountValue}% Off Promo Applied` : `UGX ${appliedCoupon.discountValue?.toLocaleString()} Flat Value Subtracted`}
+
+                    <hr className="mb-3" style={{ borderColor:'var(--border)' }} />
+                    
+                    <div className="space-y-1.5 text-xs mb-3 font-medium">
+                      <div className="flex justify-between" style={{ color:'var(--ink-soft)' }}>
+                        <span>Subtotal</span>
+                        <span>{fmt(subtotal)}</span>
+                      </div>
+
+                      {appliedCoupon && (
+                        <div className="flex justify-between text-[#1e805f] font-semibold">
+                          <span>Coupon Discount</span>
+                          <span>-{fmt(discountAmount)}</span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between" style={{ color:'var(--ink-soft)' }}>
+                        <span>Delivery Fee</span>
+                        <span className={deliveryInfo.fee === 0 && cityValue?.length >= 2 ? "text-green-600 font-bold" : ""}>
+                          {deliveryInfo.fee === 0 && cityValue?.length >= 2 ? "FREE" : fmt(deliveryInfo.fee)}
                         </span>
                       </div>
                     </div>
-                    <button 
-                      type="button" 
-                      onClick={handleRemoveCoupon} 
-                      className="text-xs text-red-500 hover:text-red-700 font-medium px-1"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                )}
-              </div>
 
-              <hr className="mb-3" style={{ borderColor:'var(--border)' }} />
-              
-              <div className="space-y-1.5 text-xs mb-3 font-medium">
-                <div className="flex justify-between" style={{ color:'var(--ink-soft)' }}>
-                  <span>Subtotal</span>
-                  <span>{fmt(subtotal)}</span>
-                </div>
-
-                {/* ── STEP 5: Visualizing Active Coupon Reductions inline inside totals breakdown ── */}
-                {appliedCoupon && (
-                  <div className="flex justify-between text-[#1e805f] font-semibold">
-                    <span>Coupon Discount</span>
-                    <span>-{fmt(discountAmount)}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between" style={{ color:'var(--ink-soft)' }}>
-                  <span>Delivery Fee</span>
-                  <span className={deliveryInfo.fee === 0 && cityValue?.length >= 2 ? "text-green-600 font-bold" : ""}>
-                    {deliveryInfo.fee === 0 && cityValue?.length >= 2 ? "FREE" : fmt(deliveryInfo.fee)}
-                  </span>
-                </div>
-              </div>
-
-              <hr className="mb-3" style={{ borderColor:'var(--border)' }} />
-              <div className="flex justify-between font-bold text-base mb-1">
-                <span style={{ color:'var(--ink)' }}>Total</span>
-                <span style={{ color:'var(--teal)' }}>{fmt(dynamicTotal)}</span>
-              </div>
-              <p className="text-[11px] mb-5" style={{ color:'var(--ink-soft)' }}>VAT inclusive where applicable</p>
-              <div className="flex flex-wrap gap-1.5 justify-center">
-                <img src="/images/mtn.webp"       alt="MTN MoMo"   className="h-5 w-auto object-contain" />
-                <img src="/images/airtel.webp"    alt="Airtel"      className="h-5 w-auto object-contain" />
-                <img src="/images/visa.webp"      alt="Visa"        className="h-5 w-auto object-contain" />
-                <img src="/images/Mastercard.webp" alt="Mastercard" className="h-5 w-auto object-contain" />
-                <img src="/images/pesapal.webp"   alt="PesaPal"     className="h-5 w-auto object-contain" />
-              </div>
+                    <hr className="mb-3" style={{ borderColor:'var(--border)' }} />
+                    <div className="flex justify-between font-bold text-base mb-1">
+                      <span style={{ color:'var(--ink)' }}>Total</span>
+                      <span style={{ color:'var(--teal)' }}>{fmt(dynamicTotal)}</span>
+                    </div>
+                    <p className="text-[11px] mb-5" style={{ color:'var(--ink-soft)' }}>VAT inclusive where applicable</p>
+                    <div className="flex flex-wrap gap-1.5 justify-center">
+                      <img src="/images/pesapal.webp"   alt="PesaPal"     className="h-5 w-auto object-contain" />
+                      <img src="/images/mtn.webp"       alt="MTN MoMo"   className="h-5 w-auto object-contain" />
+                      <img src="/images/airtel.webp"    alt="Airtel"      className="h-5 w-auto object-contain" />
+                      <img src="/images/visa.webp"      alt="Visa"        className="h-5 w-auto object-contain" />
+                      <img src="/images/Mastercard.webp" alt="Mastercard" className="h-5 w-auto object-contain" />
+                    </div>
                   </div>
 
-                  {/* PAYMENT ACTION BUTTON */}
+                  {/* Payment Section */}
+<div className="bg-white border rounded-2xl p-6" style={{ borderColor:'var(--border)' }}>
+  <h2 className="font-semibold text-base mb-4 pb-3 border-b" style={{ color:'var(--ink)', borderColor:'var(--bone)' }}>
+    3. Payment via PesaPal
+  </h2>
+  <div className="flex items-start gap-3 rounded-xl p-4 text-sm" style={{ background:'#eff6ff', color:'var(--ink-mid)' }}>
+    <div className="space-y-3">
+                        {/* PAYMENT ACTION BUTTON */}
                   <motion.button 
                     type="submit" 
                     disabled={isPayDisabled} 
@@ -653,10 +590,22 @@ export default function Checkout() {
                         Redirecting to PesaPal...
                       </span>
                     ) : (
-                      `🔒 Pay ${fmt(dynamicTotal)} via PesaPal`
+                      ` Pay ${fmt(dynamicTotal)} via PesaPal`
                     )}
                   </motion.button>
-
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <img src="/images/pesapal.webp"    alt="PesaPal"     className="h-5 w-auto object-contain" />
+        <img src="/images/mtn.webp"        alt="MTN MoMo"    className="h-5 w-auto object-contain" />
+        <img src="/images/airtel.webp"     alt="Airtel"       className="h-5 w-auto object-contain" />
+        <img src="/images/visa.webp"       alt="Visa"         className="h-5 w-auto object-contain" />
+        <img src="/images/Mastercard.webp" alt="Mastercard"   className="h-5 w-auto object-contain" />
+      </div>
+      <p className="text-xs sm:text-sm leading-relaxed">
+        🔒 Payments processed securely — East Africa's leading PCI-DSS Level 1 gateway.
+      </p>
+    </div>
+  </div>
+</div>
                   <p className="text-center text-xs" style={{ color:'var(--ink-soft)' }}>A confirmation details layout will be shown after payment. {!isLoggedIn && <> <Link to="/register" className="font-medium hover:underline" style={{ color:'var(--teal)' }}>Create an account</Link> to track orders anytime.</>}</p>
                 </motion.div>
               )}
@@ -683,12 +632,10 @@ export default function Checkout() {
               </div>
               <hr className="mb-4" style={{ borderColor:'var(--border)' }} />
               
-              {/* ── STEP 5: Applied Coupon Input Component Block Layout ── */}
               <div className="mb-4">
-                {/* Available coupon chips — logged-in users only */}
-                {isLoggedIn && availableCoupons.length > 0 && !appliedCoupon && (
+                {(isLoggedIn || (smsVerified && !isLoggedIn)) && availableCoupons.length > 0 && !appliedCoupon && (
                   <div className="mb-3">
-                    <div className="text-[10px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-2">Your Available Coupons</div>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-[#8a9bb0] mb-2">🎉 Welcome Offer</div>
                     <div className="flex flex-wrap gap-2">
                       {availableCoupons.map(c => (
                         <button
@@ -765,7 +712,6 @@ export default function Checkout() {
                   <span>{fmt(subtotal)}</span>
                 </div>
 
-                {/* ── STEP 5: Visualizing Active Coupon Reductions inline inside totals breakdown ── */}
                 {appliedCoupon && (
                   <div className="flex justify-between text-[#1e805f] font-semibold">
                     <span>Coupon Discount</span>

@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 import { productService } from '../services/api';
 import { api } from '../stores';
 import ProductCard from '../components/products/ProductCard';
-import { COLLECTION_IMAGES } from '../utils/images';
 
 const CATS = [
   { id:'all',      label:'All',      icon:'' },
@@ -13,10 +12,30 @@ const CATS = [
 ];
 
 const COLLECTIONS = [
-  { key:'officeChic',   title:'All',   sub:'Professional elegance',     href:'/products' },
-  { key:'bohoHome',     title:'Decor',     sub:'Natural textures & warmth', href:'/decor'    },
-  { key:'weekendVibes', title:'Footwear', sub:'Relaxed, effortless style', href:'/footwear' },
-  { key:'partySeason',  title:'Accessories',  sub:'Statement pieces to shine', href:'/accessories' },
+  { 
+    key:'officeChic',   
+    title:'All',   
+    href:'/products',
+    imgUrl: 'https://plain-eeur-prod-public.komododecks.com/202607/03/rxrxhqYjBqNp8LPA4okC/image.jpg' 
+  },
+  { 
+    key:'bohoHome',     
+    title:'Decor',     
+    href:'/decor',
+    imgUrl: 'https://plain-eeur-prod-public.komododecks.com/202607/03/NS2dV0dSfVb8oeHfYWdZ/image.jpg'
+  },
+  { 
+    key:'weekendVibes', 
+    title:'Footwear',  
+    href:'/footwear',
+    imgUrl: 'https://plain-eeur-prod-public.komododecks.com/202607/03/IuV8b0JCTWkji5fLpOEK/image.jpg'
+  },
+  { 
+    key:'partySeason',  
+    title:'Accessories',   
+    href:'/accessories',
+    imgUrl: 'https://plain-eeur-prod-public.komododecks.com/202607/03/wKNgNW5rEt0OozSWUImf/image.jpg' 
+  },
 ];
 
 const DEFAULT_HERO = {
@@ -28,7 +47,7 @@ const DEFAULT_HERO = {
   stat1: { value:'500+', label:'Products'   },
   stat2: { value:'4.8★', label:'Avg Rating' },
   stat3: { value:'1K+',  label:'Customers'  },
-  images: [],  // intentionally empty — real images come from Firestore via GET /api/hero
+  images: [],  
   bgImage: '',
 };
 
@@ -92,8 +111,6 @@ export default function Home() {
           </div>
           <div className="grid gap-[2px]" style={{background:'#0d1a14',gridTemplateColumns:'repeat(2,1fr)',minHeight:'200px'}}>
             {heroLoading ? (
-              // Shimmer placeholders — shown only while the Firestore fetch is in flight.
-              // Prevents the stale DEFAULT_HERO images from flashing on every load.
               [0,1].map(i => (
                 <div key={i} style={{minHeight:'200px',background:'linear-gradient(90deg,#1a2e1a 25%,#243d24 50%,#1a2e1a 75%)',backgroundSize:'200% 100%',animation:'shimmer 1.4s infinite'}} />
               ))
@@ -112,7 +129,6 @@ export default function Home() {
 
       {/* ── COLLECTIONS ── */}
       <section className="px-5 md:px-7 pt-10 pb-4">
-        {/* Changed container to hidden on mobile, flex on desktop to gracefully hide the whole header block */}
         <div className="hidden md:flex items-baseline justify-between mb-5">
           <h2 className="font-semibold text-[28px] font-medium tracking-tight">Featured Collections</h2>
           <Link to="/products" className="text-sm font-medium hover:underline" style={{color:'#2C5F2D'}}>View all →</Link>
@@ -121,7 +137,7 @@ export default function Home() {
           {COLLECTIONS.map((c, i) => (
             <motion.div key={c.key} initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} transition={{delay:i*.07}}>
               <Link to={c.href} className="collection-card block" style={{height:190}}>
-                <img src={COLLECTION_IMAGES[c.key]} alt={c.title} className="w-full h-full object-cover" />
+                <img src={c.imgUrl} alt={c.title} className="w-full h-full object-cover" />
                 <div className="collection-overlay">
                   <h3 className="font-semibold text-[20px] text-white leading-tight">{c.title}</h3>
                   <p className="text-white/70 text-[11px] mt-1">{c.sub}</p>

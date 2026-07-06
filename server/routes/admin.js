@@ -117,7 +117,8 @@ router.post('/coupons', async (req, res) => {
   try {
     const { 
       code, type, discountType, value, discountValue, 
-      minTotal, minSubtotalRequired, maxClaims, usageLimit, expiresAt 
+      minTotal, minSubtotalRequired, maxClaims, usageLimit, expiresAt,
+      couponType,
     } = req.body;
 
     if (!code) {
@@ -147,6 +148,9 @@ router.post('/coupons', async (req, res) => {
       expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
       status: 'active',
       isActive: true,
+      // 'welcome' → shown as a one-click chip to first-time users only.
+      // 'promo'   → never shown as a chip; must be entered manually. Default.
+      couponType: couponType === 'welcome' ? 'welcome' : 'promo',
       createdAt: new Date().toISOString()
     };
 

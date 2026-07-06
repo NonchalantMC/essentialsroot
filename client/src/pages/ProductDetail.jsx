@@ -5,6 +5,7 @@ import { productService } from '../services/api';
 import { useCartStore, useWishlistStore } from '../stores';
 import { useToast } from '../hooks/useToast';
 import { PRODUCT_IMAGES, getProductImage } from '../utils/images';
+import ProductCard from '../components/products/ProductCard';
 
 const fmt = n => `UGX ${n?.toLocaleString()}`;
 
@@ -22,14 +23,43 @@ export default function ProductDetail() {
   const [qty,        setQty]        = useState(1);
   const [activeTab,  setActiveTab]  = useState('details');
   const [adding,     setAdding]     = useState(false);
+  const [related,    setRelated]    = useState([]);
 
   useEffect(() => {
     setLoading(true);
+    setRelated([]);
     productService.getBySlug(slug)
       .then(({ data }) => { setProduct(data); })
       .catch(() => navigate('/products'))
       .finally(() => setLoading(false));
   }, [slug, navigate]);
+
+  // Fetch related products once the current product is loaded
+  useEffect(() => {
+    if (!product) return;
+    const currentId = product._id || product.id;
+    productService.list({
+      type:   product.type,
+      status: 'active',
+      limit:  20,
+    }).then(({ data }) => {
+      const all = data.products || [];
+      // Score each product by similarity: same category = 2pts, shared tag = 1pt each
+      const scored = all
+        .filter(p => (p._id || p.id) !== currentId)
+        .map(p => {
+          let score = 0;
+          if (p.category && p.category === product.category) score += 2;
+          (product.tags || []).forEach(tag => {
+            if (p.tags?.includes(tag)) score += 1;
+          });
+          return { ...p, _score: score };
+        })
+        .sort((a, b) => b._score - a._score)
+        .slice(0, 4);
+      setRelated(scored);
+    }).catch(() => {});
+  }, [product]);
 
   if (loading) return (
     <div className="max-w-6xl mx-auto px-7 py-12 grid grid-cols-1 md:grid-cols-2 gap-12">
@@ -268,6 +298,32 @@ export default function ProductDetail() {
           </div>
         </div>
       </div>
+
+      {/* ── YOU MAY ALSO LIKE ── */}
+      {related.length > 0 && (
+        <div className="mt-16 pt-10 border-t" style={{ borderColor:'var(--border)' }}>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="font-semibold text-xl sm:text-2xl" style={{ color:'var(--ink)' }}>
+              You May Also Like
+            </h2>
+            <a
+              href={`/${product.type === 'footwear' ? 'footwear' : product.type === 'decor' ? 'decor' : 'products'}`}
+              className="text-sm font-semibold hover:underline flex-shrink-0"
+              style={{ color:'var(--teal)' }}
+            >
+              View all →
+            </a>
+          </div>
+
+          {/* 4-column on desktop, 2-column on mobile */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            {related.map((p, i) => (
+              <ProductCard key={p._id || p.id} product={p} index={i} />
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

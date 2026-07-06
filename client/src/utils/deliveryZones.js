@@ -50,14 +50,7 @@ export function getDeliveryFee(cityInput, subtotal) {
     return { fee: 7000, label: "Zone 2 (Unlisted Area Fallback)", eta: "1–3 hrs", isEstimated: true };
   }
 
-  const { zone, key } = bestMatch;
-
-  if (subtotal >= 200000) {
-    return { fee: 0, label: `${zone.label} (Free Delivery Promo 🎉)`, eta: zone.eta, isEstimated: false };
-  }
-  if (subtotal >= 100000 && (key === 'zone1' || key === 'zone2')) {
-    return { fee: 0, label: `${zone.label} (Free Delivery Promo 🎉)`, eta: zone.eta, isEstimated: false };
-  }
+  const { zone } = bestMatch;
 
   return { fee: zone.fee, label: zone.label, eta: zone.eta, isEstimated: false };
 }

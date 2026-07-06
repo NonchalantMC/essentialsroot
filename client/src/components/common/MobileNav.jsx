@@ -19,7 +19,7 @@ export default function MobileNav() {
           const active = pathname === to || (to !== '/' && pathname.startsWith(to));
           return (
             <Link key={to} to={to} className="flex-1 flex flex-col items-center justify-center py-3 gap-1 relative">
-              <div className={`relative transition-colors ${active ? 'text-sage-500' : 'text-gray-400'}`}>
+              <div className={`relative transition-colors ${active ? 'text-teal' : 'text-gray-400'}`}>
                 <Icon className="w-5 h-5" />
                 {badge && count > 0 && (
                   <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-gold-500 text-gray-900 text-[9px] font-bold rounded-full flex items-center justify-center">
@@ -27,7 +27,7 @@ export default function MobileNav() {
                   </span>
                 )}
               </div>
-              <span className={`text-[10px] font-medium ${active ? 'text-sage-500' : 'text-gray-400'}`}>{label}</span>
+              <span className={`text-[10px] font-medium ${active ? 'text-teal' : 'text-gray-400'}`}>{label}</span>
             </Link>
           );
         })}

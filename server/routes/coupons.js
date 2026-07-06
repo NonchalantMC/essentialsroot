@@ -137,8 +137,11 @@ async function applyCouponToOrder(couponCode, subtotal, customerId = null, custo
 // Guests are not served this endpoint — they have no order history to check against.
 router.get('/available', optionalAuth, async (req, res) => {
   try {
-    const userId = req.user?._id || req.user?.id || null;
-    if (!userId) return res.json([]);
+    const userId     = req.user?._id || req.user?.id || null;
+    const guestPhone = req.query.phone || null;
+
+    // Serve logged-in users by userId, verified guests by phone.
+    if (!userId && !guestPhone) return res.json([]);
 
     const now = new Date();
     const allCoupons = await CouponService.find(
@@ -146,20 +149,38 @@ router.get('/available', optionalAuth, async (req, res) => {
       { limit: 50, orderBy: 'createdAt', orderDir: 'desc' }
     );
 
-    // Filter to coupons that are still valid
+    // Only 'welcome' coupons are ever shown as clickable chips. 'promo'
+    // coupons must be entered manually — they never surface here, so a
+    // seasonal or campaign code isn't exposed to every visitor by default.
     const activeCoupons = allCoupons.filter(c =>
+      c.couponType === 'welcome' &&
       c.status !== 'inactive' &&
       (!c.expiresAt || new Date(c.expiresAt) > now) &&
       (!c.usageLimit || (c.usageCount || c.currentClaims || 0) < c.usageLimit)
     );
 
-    // Exclude any the user has already used in a non-cancelled order
-    const userOrders = await OrderService.find({ customerId: userId });
-    const usedCodes  = new Set(
-      userOrders
-        .filter(o => o.orderStatus !== 'cancelled' && o.couponCode)
-        .map(o => o.couponCode)
-    );
+    if (activeCoupons.length === 0) return res.json([]);
+
+    // Resolve identity — logged-in userId, or a guest user record by phone
+    let resolvedId = userId;
+    if (!resolvedId && guestPhone) {
+      const guestUser = await UserService.findOne({ phone: guestPhone });
+      resolvedId = guestUser?._id || guestUser?.id || null;
+    }
+
+    // Welcome coupons are for first-time customers only — anyone with a
+    // past non-cancelled order has already made their first purchase and
+    // should not see welcome chips (they may still type a promo code manually).
+    let isFirstTimeCustomer = true;
+    let usedCodes = new Set();
+    if (resolvedId) {
+      const pastOrders = await OrderService.find({ customerId: resolvedId });
+      const realOrders = pastOrders.filter(o => o.orderStatus !== 'cancelled');
+      isFirstTimeCustomer = realOrders.length === 0;
+      usedCodes = new Set(realOrders.filter(o => o.couponCode).map(o => o.couponCode));
+    }
+
+    if (!isFirstTimeCustomer) return res.json([]);
 
     const eligible = activeCoupons
       .filter(c => !usedCodes.has(c.code))
@@ -212,7 +233,8 @@ router.post('/', protect, adminOnly, async (req, res) => {
   try {
     const {
       code, type, discountType, value, discountValue,
-      minTotal, minSubtotalRequired, maxClaims, usageLimit, expiresAt
+      minTotal, minSubtotalRequired, maxClaims, usageLimit, expiresAt,
+      couponType,
     } = req.body;
 
     if (!code) {
@@ -242,6 +264,7 @@ router.post('/', protect, adminOnly, async (req, res) => {
       expiresAt:          expiresAt ? new Date(expiresAt).toISOString() : null,
       status:             'active',
       isActive:           true,
+      couponType:         couponType === 'welcome' ? 'welcome' : 'promo',
       createdAt:          new Date().toISOString()
     };
 

@@ -4,8 +4,8 @@ export default function WhatsAppButton() {
       href="https://wa.me/256749156332?text=Hello!%20I%20have%20a%20question%20about%20Essentials256."
       target="_blank"
       rel="noopener noreferrer"
-      className="fixed bottom-24 md:bottom-6 right-6 z-50 flex items-center justify-center gap-0 md:gap-2 bg-[#25D366] text-white font-semibold p-3 md:px-5 md:py-3 rounded-full shadow-xl hover:bg-[#20ba5a] hover:scale-105 transition-all duration-300"
-      style={{ boxShadow: '0 4px 15px rgba(37, 211, 102, 0.4)' }}
+      className="fixed bottom-24 md:bottom-6 right-6 z-50 flex items-center justify-center gap-0 md:gap-2 bg-[#25D366] bg-opacity-80 text-white font-semibold p-3 md:px-5 md:py-3 rounded-full shadow-xl hover:bg-opacity-100 hover:scale-105 transition-all duration-300"
+      style={{ boxShadow: '0 4px 15px rgba(37, 211, 102, 0.25)' }}
     >
       <svg 
         xmlns="http://www.w3.org/2000/svg" 

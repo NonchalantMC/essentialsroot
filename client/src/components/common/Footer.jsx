@@ -42,8 +42,7 @@ function NewsletterRow() {
 
 const FOOTER_LINKS = [
   { col:'Shop',    links:[{label:'Footwear',to:'/footwear'},{label:'Interior Decor',to:'/decor'},{label:'Collections',to:'/products'},{label:'New Arrivals',to:'/products?tag=new'},{label:'Sale',to:'/products?tag=sale'}] },
-  { col:'Help',    links:[{label:'Size Guide',to:'/size-guide'},{label:'Returns Policy',to:'/returns'},{label:'Track Order',to:'/profile?tab=orders'},{label:'Contact Us',to:'/contact'},{label:'WhatsApp',href:'https://wa.me/256749156332',external:true}] },
-  { col:'Company', links:[{label:'About Us',to:'/about'},{label:'Blog',to:'/blog'},{label:'Privacy Policy',to:'/privacy'},{label:'Terms of Service',to:'/terms'}] },
+  { col:'Help',    links:[{label:'Terms of Service',to:'/terms'},{label:'Privacy Policy',to:'/privacy'},{label:'Returns Policy',to:'/returns'},{label:'Size Guide',to:'/size-guide'},{label:'Contact Us',to:'/contact'}] },
 ];
 
 const SOCIALS = [
