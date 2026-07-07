@@ -31,7 +31,9 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-db.settings({ databaseId: 'default' });
+// essentials-main is the Native Mode database that replaced the original
+// (default) Datastore Mode database.
+db.settings({ databaseId: process.env.FIRESTORE_DATABASE_ID || 'essentials-main' });
 
 // Convert Firestore doc snapshot → plain JS object with _id and id fields
 const docToObj = (doc) => {
