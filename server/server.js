@@ -4,7 +4,6 @@ const cors       = require('cors');
 const helmet     = require('helmet');
 const rateLimit  = require('express-rate-limit');
 const functions  = require('firebase-functions'); 
-const bcrypt     = require('bcryptjs'); 
 
 const app = express();
 

@@ -1,24 +1,12 @@
 const express  = require('express');
 const router   = express.Router();
-const jwt      = require('jsonwebtoken');
 const FirestoreService = require('../services/FirestoreService');
+const { optionalAuth } = require('../middleware/auth');
 const { submitOrderRequest, getTransactionStatus, mapPaymentStatus } = require('../utils/pesapal');
 const { sendOrderConfirmation } = require('../utils/email');
 
 const OrderService = new FirestoreService('orders');
 const UserService  = new FirestoreService('users');
-
-// Attach user if token present — never block guests
-const optionalAuth = async (req, res, next) => {
-  try {
-    const header = req.headers.authorization;
-    if (header && header.startsWith('Bearer ')) {
-      const decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET);
-      req.user = await UserService.findById(decoded.id);
-    }
-  } catch {}
-  next();
-};
 
 async function getContact(order, reqUser, guestInfo) {
   if (reqUser)                return { name: reqUser.name, email: reqUser.email };

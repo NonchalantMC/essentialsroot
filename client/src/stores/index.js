@@ -5,7 +5,7 @@ import axios from 'axios';
 // ─── SHARED API INSTANCE ──────────────────────────────────────────────────────
 export const api = axios.create({
   // Point directly to your production Firebase URL
-  baseURL: 'https://essentials-256.web.app/api',
+  baseURL: import.meta.env.VITE_API_URL || 'https://essentials-256.web.app/api',
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 });
