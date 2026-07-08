@@ -36,7 +36,7 @@ router.post('/image', protect, adminOnly, upload.single('image'), (req, res) => 
       transformation: [{ width: 1200, height: 1200, crop: 'limit', quality: 'auto:good' }],
     },
     (error, result) => {
-      if (error) return res.status(500).json({ message: error.message });
+      if (error) return res.status(500).json({ message: process.env.NODE_ENV === 'development' ? error.message : 'Image upload failed.' });
       res.json({ url: result.secure_url, publicId: result.public_id });
     }
   );
@@ -45,7 +45,7 @@ router.post('/image', protect, adminOnly, upload.single('image'), (req, res) => 
 // DELETE /api/upload/image/:publicId  (admin only)
 router.delete('/image/:publicId', protect, adminOnly, (req, res) => {
   cloudinary.uploader.destroy(req.params.publicId, (error) => {
-    if (error) return res.status(500).json({ message: error.message });
+    if (error) return res.status(500).json({ message: process.env.NODE_ENV === 'development' ? error.message : 'Image deletion failed.' });
     res.json({ message: 'Image deleted' });
   });
 });

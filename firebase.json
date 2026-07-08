@@ -6,7 +6,7 @@
       "node_modules",
       ".git",
       "firebase-service-account.json",
-      "utils/migrate-to-firebase.js",
+      "scripts/**",
       "utils/seed.js"
     ]
   },
@@ -34,3 +34,4 @@
     "rules": "server/firestore.rules"
   }
 }
+
