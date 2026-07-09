@@ -1,5 +1,20 @@
 rules_version = '2';
 
+// Essentials256 — Firestore Security Rules
+//
+// ALL database access is intentionally routed through the Express API
+// (Firebase Cloud Function). Direct client SDK access is disabled for
+// every collection. This means:
+//   - No Firebase client SDK calls from the React frontend
+//   - No Firebase Studio / console edits in production without
+//     explicit rule changes here first
+//   - All auth, validation and business logic lives in the API layer
+//
+// To grant temporary admin console access for debugging:
+//   1. Change the rule below to: if request.auth != null && request.auth.token.email == 'your@email.com'
+//   2. Deploy rules: firebase deploy --only firestore:rules
+//   3. Revert immediately after debugging
+
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {

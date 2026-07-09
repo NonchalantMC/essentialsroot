@@ -1,0 +1,56 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      # ── Build client ──────────────────────────────────────────────────
+      - name: Install client dependencies
+        run: cd client && npm ci
+
+      - name: Build client
+        run: cd client && npm run build
+        env:
+          VITE_API_URL: https://essentials256.com/api
+
+      # ── Install server dependencies ───────────────────────────────────
+      - name: Install server dependencies
+        run: cd server && npm ci --omit=dev
+
+      # ── Deploy to Firebase ────────────────────────────────────────────
+      - name: Deploy to Firebase
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: essentials-256
+          channelId: live
+        env:
+          FIREBASE_CLI_EXPERIMENTS: webframeworks
+
+      - name: Deploy Cloud Functions
+        run: npx firebase-tools deploy --only functions --project essentials-256
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+      - name: Deploy Firestore Rules
+        run: npx firebase-tools deploy --only firestore:rules --project essentials-256
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
