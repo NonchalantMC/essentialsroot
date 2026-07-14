@@ -16,9 +16,19 @@ export const productService = {
 // ─── ORDER ENDPOINTS ──────────────────────────────────────────────────────────
 export const orderService = {
   create:       (data) => api.post('/orders', data),
+  createGuest:  (data) => api.post('/orders/guest', data),
   getMyOrders:  ()     => api.get('/orders/my'),
-  getByNumber:  (num)  => api.get(`/orders/${num}`),
+  getByNumber:  (num, phone = '') => 
+    api.get(`/orders/${num}${phone ? `?phone=${encodeURIComponent(phone)}` : ''}`),
   updateStatus: (id, data) => api.patch(`/orders/${id}/status`, data),
+};
+
+// ─── COUPON ENDPOINTS ─────────────────────────────────────────────────────────
+export const couponService = {
+  validate: (code, subtotal) => api.post('/coupons/validate', { code, subtotal }),
+  list:     ()               => api.get('/admin/coupons'),
+  create:   (data)           => api.post('/admin/coupons', data),
+  delete:   (id)             => api.delete(`/admin/coupons/${id}`),
 };
 
 // ─── PAYMENT ENDPOINTS ────────────────────────────────────────────────────────

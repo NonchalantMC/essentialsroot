@@ -5,7 +5,7 @@
 //
 // Required env vars:
 //   BREVO_API_KEY   — from https://app.brevo.com/settings/keys/api
-//   FROM_EMAIL      — verified sender in Brevo (default: orders@essentials256.com)
+//   FROM_EMAIL      — verified sender in Brevo (default: comms@essentials256.com)
 //   ADMIN_EMAIL     — where admin alerts go
 //   CLIENT_URL      — frontend base URL for email links
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ async function sendEmail({ to, subject, html }) {
       body: JSON.stringify({
         sender: {
           name:  'Essentials256',
-          email: process.env.FROM_EMAIL || 'orders@essentials256.com',
+          email: process.env.FROM_EMAIL || 'comms@essentials256.com',
         },
         to:          [{ email: to }],
         subject,
@@ -257,7 +257,7 @@ async function sendWelcomeEmail(email, name) {
 
 async function sendAdminNewUserAlert(user) {
   await sendEmail({
-    to:      process.env.ADMIN_EMAIL || 'orders@essentials256.com',
+    to:      process.env.ADMIN_EMAIL || 'comms@essentials256.com',
     subject: `👤 New User Registration: ${user.name}`,
     html:    adminNewUserHtml(user),
   });
@@ -265,7 +265,7 @@ async function sendAdminNewUserAlert(user) {
 
 async function notifyAdminOfNewOrder(order, customerName, customerPhone) {
   await sendEmail({
-    to:      process.env.ADMIN_EMAIL || 'orders@essentials256.com',
+    to:      process.env.ADMIN_EMAIL || 'comms@essentials256.com',
     subject: `🔔 New Pending Order: ${order.orderNumber}`,
     html:    adminNewOrderHtml(order, customerName, customerPhone),
   });
