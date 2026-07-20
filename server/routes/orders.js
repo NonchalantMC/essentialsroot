@@ -38,12 +38,22 @@ async function alertAdminOfNewOrder(order, customerName, customerPhone) {
 // GUEST SMS OTP VERIFICATION ENDPOINTS
 // ==========================================
 
+// Failed-guess ceiling per OTP record, on top of the IP/phone-keyed rate
+// limiter in server.js. Defense in depth: even if someone found a way around
+// the request-level limiter, a single OTP record can't be brute-forced.
+const OTP_MAX_ATTEMPTS = 5;
+
 router.post('/guest/send-otp', async (req, res) => {
   try {
     const { phone } = req.body;
     if (!phone) {
       return res.status(400).json({ message: 'Phone number is required' });
     }
+
+    // Clear any outstanding OTPs for this number first, so only the most
+    // recently sent code is ever valid — avoids stacking up guessable codes.
+    const existing = await OtpService.find({ phone }, { limit: 20 });
+    await Promise.all(existing.map(r => OtpService.deleteById(r._id || r.id)));
 
     const otpCode   = String(Math.floor(100000 + Math.random() * 900000));
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
@@ -52,6 +62,7 @@ router.post('/guest/send-otp', async (req, res) => {
       phone,
       code: otpCode,
       expiresAt,
+      attempts: 0,
       createdAt: new Date().toISOString()
     });
 
@@ -71,13 +82,24 @@ router.post('/guest/verify-otp', async (req, res) => {
       return res.status(400).json({ message: 'Phone number and code are required' });
     }
 
-    const otpRecord = await OtpService.findOne({ phone, code: String(code).trim() });
+    const otpRecord = await OtpService.findOne({ phone });
     if (!otpRecord) {
       return res.status(400).json({ message: 'Invalid verification code' });
     }
 
     if (new Date() > new Date(otpRecord.expiresAt)) {
+      await OtpService.deleteById(otpRecord._id || otpRecord.id);
       return res.status(400).json({ message: 'Verification code has expired. Please try again.' });
+    }
+
+    if ((otpRecord.attempts ?? 0) >= OTP_MAX_ATTEMPTS) {
+      await OtpService.deleteById(otpRecord._id || otpRecord.id);
+      return res.status(429).json({ message: 'Too many incorrect attempts. Please request a new code.' });
+    }
+
+    if (String(code).trim() !== otpRecord.code) {
+      await OtpService.updateById(otpRecord._id || otpRecord.id, { attempts: (otpRecord.attempts ?? 0) + 1 });
+      return res.status(400).json({ message: 'Invalid verification code' });
     }
 
     // Invalidate the OTP immediately — prevents replay of the same code

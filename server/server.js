@@ -29,8 +29,49 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/api/auth/login',    authLimiter);
-app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/login',            authLimiter);
+app.use('/api/auth/register',         authLimiter);
+app.use('/api/auth/reset-password',   authLimiter);
+
+// ── Dedicated limiter for forgot-password ─────────────────────────────────────
+// Separate from authLimiter and much tighter: this endpoint doesn't just risk
+// brute force, each hit sends a real email, so it doubles as an anti-spam
+// control. Keyed on email (so an attacker can't dodge it by rotating IPs) with
+// a longer window, since 10 reset emails in 15 minutes to someone's inbox is
+// already harassment even if no account is ever compromised.
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  keyGenerator: (req) => (req.body?.email || req.ip || 'unknown').toLowerCase(),
+  message: { message: 'Too many reset requests for this email. Please try again in an hour.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/auth/forgot-password', forgotPasswordLimiter);
+
+// ── OTP-specific rate limits ──────────────────────────────────────────────────
+// Keyed on phone number (not IP) so an attacker can't dodge the limit by
+// rotating IPs, and a shared office/NAT IP doesn't get everyone locked out.
+// send-otp is capped tighter since each call costs real SMS credit and can be
+// used to spam a victim's phone.
+const otpSendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => (req.body?.phone || req.ip || 'unknown').toString(),
+  message: { message: 'Too many verification code requests. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const otpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => (req.body?.phone || req.ip || 'unknown').toString(),
+  message: { message: 'Too many verification attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/orders/guest/send-otp',   otpSendLimiter);
+app.use('/api/orders/guest/verify-otp', otpVerifyLimiter);
 
 app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 200 }));
 

@@ -2,11 +2,34 @@ const express  = require('express');
 const router   = express.Router();
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
+const crypto   = require('crypto');
 const FirestoreService = require('../services/FirestoreService');
 const { protect } = require('../middleware/auth');
-const { sendWelcomeEmail, sendAdminNewUserAlert } = require('../utils/email');
+const { sendWelcomeEmail, sendAdminNewUserAlert, sendPasswordReset } = require('../utils/email');
 
 const UserService = new FirestoreService('users');
+
+// Server-side password policy — mirrors the client Zod schema, but this is
+// the copy that actually matters since the client check is trivially
+// bypassable by calling the API directly.
+const PASSWORD_MIN_LENGTH = 8;
+function passwordPolicyError(password) {
+  if (typeof password !== 'string' || password.length < PASSWORD_MIN_LENGTH) {
+    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+  }
+  if (!/[A-Z]/.test(password)) return 'Password must include an uppercase letter';
+  if (!/[0-9]/.test(password)) return 'Password must include a number';
+  return null;
+}
+
+// Reset tokens: we generate a random token, email the raw value to the user,
+// and store only its SHA-256 hash on the user doc (same principle as never
+// storing plaintext passwords — a Firestore read/export can't be used to
+// take over accounts). Expires in 1 hour.
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 // tokenVersion is stored on the user document and included in every JWT.
 // Incrementing it in Firestore instantly invalidates all previously issued
@@ -35,6 +58,9 @@ router.post('/register', async (req, res) => {
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Name, email and password are required' });
     }
+
+    const pwError = passwordPolicyError(password);
+    if (pwError) return res.status(400).json({ message: pwError });
 
     const normalizedEmail = String(email).toLowerCase().trim();
     const existing = await UserService.findOne({ email: normalizedEmail });
@@ -104,6 +130,75 @@ router.patch('/profile', protect, async (req, res) => {
     const user   = await UserService.updateById(userId, updates);
     const { passwordHash, ...safeUser } = user;
     res.json(safeUser);
+  } catch (err) {
+    serverErr(res, err);
+  }
+});
+
+// POST /api/auth/forgot-password
+// Always returns the same generic message whether or not the email exists —
+// this prevents attackers from using this endpoint to enumerate registered
+// accounts.
+router.post('/forgot-password', async (req, res) => {
+  const genericResponse = { message: 'If an account exists for that email, a reset link has been sent.' };
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email is required' });
+
+    const normalizedEmail = String(email).toLowerCase().trim();
+    const user = await UserService.findOne({ email: normalizedEmail });
+
+    if (user) {
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      await UserService.updateById(user._id || user.id, {
+        resetPasswordToken:   hashToken(rawToken),
+        resetPasswordExpires: new Date(Date.now() + RESET_TOKEN_TTL_MS).toISOString(),
+      });
+
+      const resetUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password/${rawToken}`;
+      sendPasswordReset(user.email, user.name, resetUrl)
+        .catch(err => console.error('Password reset email failed:', err));
+    }
+
+    res.status(200).json(genericResponse);
+  } catch (err) {
+    console.error('forgot-password error:', err);
+    // Still return the generic response — don't leak whether something broke
+    // vs. the account not existing.
+    res.status(200).json(genericResponse);
+  }
+});
+
+// POST /api/auth/reset-password/:token
+router.post('/reset-password/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+    if (!token) return res.status(400).json({ message: 'Reset token is required' });
+
+    const pwError = passwordPolicyError(password);
+    if (pwError) return res.status(400).json({ message: pwError });
+
+    const hashedToken = hashToken(token);
+    const user = await UserService.findOne({ resetPasswordToken: hashedToken });
+
+    if (!user || !user.resetPasswordExpires || new Date() > new Date(user.resetPasswordExpires)) {
+      return res.status(400).json({ message: 'This reset link is invalid or has expired. Please request a new one.' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const currentVersion = user.tokenVersion ?? 0;
+
+    await UserService.updateById(user._id || user.id, {
+      passwordHash,
+      resetPasswordToken:   null,
+      resetPasswordExpires: null,
+      // Bump tokenVersion so any session tokens issued before the reset
+      // (e.g. a stolen token an attacker was using) are immediately invalidated.
+      tokenVersion: currentVersion + 1,
+    });
+
+    res.status(200).json({ message: 'Password has been reset successfully. Please log in.' });
   } catch (err) {
     serverErr(res, err);
   }

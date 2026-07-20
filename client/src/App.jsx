@@ -19,6 +19,8 @@ const OrderConfirmation = lazy(() => import('./pages/OrderConfirmation'));
 const Profile           = lazy(() => import('./pages/Profile'));
 const Login             = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Register          = lazy(() => import('./pages/Login').then(m => ({ default: m.Register })));
+const ForgotPassword    = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword     = lazy(() => import('./pages/ResetPassword'));
 const Admin             = lazy(() => import('./pages/Admin'));
 const PaymentCallback   = lazy(() => import('./pages/PaymentCallback'));
 
@@ -90,6 +92,8 @@ function AppShell() {
             <Route path="/checkout"           element={<Checkout />} />
             <Route path="/login"              element={<Login />} />
             <Route path="/register"           element={<Register />} />
+            <Route path="/forgot-password"    element={<ForgotPassword />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
             <Route path="/payment/callback"   element={<PaymentCallback />} />
 
             {/* ── Static pages ── */}
