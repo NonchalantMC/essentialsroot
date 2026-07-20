@@ -5,7 +5,17 @@ import { useCartStore } from '../../stores';
 const fmt = n => `UGX ${n?.toLocaleString()}`;
 
 export default function CartDrawer() {
-  const { isOpen, closeCart, items, updateQty, removeItem, subtotal } = useCartStore();
+  // Pulling state and update methods from your custom cart store[cite: 2]
+  const { isOpen, closeCart, items, updateQty, removeItem, subtotal, updateSize } = useCartStore();
+
+  // Helper function to handle size selection dynamically[cite: 2]
+  const handleSizeChange = (itemKey, newSize) => {
+    if (updateSize) {
+      updateSize(itemKey, newSize);
+    } else {
+      console.warn("updateSize action is not defined in your useCartStore. Please update your stores/index.js file.");
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -53,38 +63,77 @@ export default function CartDrawer() {
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {items.map(item => (
-                    <div key={item.key} className="flex gap-3 py-4 border-b last:border-0" style={{borderColor:'var(--border)'}}>
-                      <div className="w-[72px] h-[72px] rounded-xl flex-shrink-0 overflow-hidden border" style={{background:'var(--cream)',borderColor:'var(--border)'}}>
-                        {item.product.images?.[0]
-                          ? <img src={item.product.images[0]} alt={item.product.name} className="w-full h-full object-cover"/>
-                          : <div className="w-full h-full flex items-center justify-center text-2xl">{item.product.type==='footwear'?'👠':'🏺'}</div>}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium line-clamp-1" style={{color:'var(--ink)'}}>{item.product.name}</p>
-                        <p className="text-xs mt-0.5" style={{color:'var(--ink-soft)'}}>{item.size?`EU ${item.size}`:item.product.category}</p>
-                        <div className="flex items-center justify-between mt-2.5">
-                          <span className="text-sm font-bold" style={{color:'var(--teal)'}}>{fmt(item.product.price*item.qty)}</span>
-                          <div className="flex items-center gap-1">
-                            <button onClick={()=>updateQty(item.key,item.qty-1)}
-                                    className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-medium transition-colors"
-                                    style={{background:'var(--bone)',color:'var(--ink)'}}>−</button>
-                            <span className="w-6 text-center text-sm font-medium" style={{color:'var(--ink)'}}>{item.qty}</span>
-                            <button onClick={()=>updateQty(item.key,item.qty+1)}
-                                    className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-medium transition-colors"
-                                    style={{background:'var(--bone)',color:'var(--ink)'}}>+</button>
-                            <button onClick={()=>removeItem(item.key)}
-                                    className="w-7 h-7 rounded-full flex items-center justify-center ml-1 transition-colors"
-                                    style={{color:'#ccc'}}>
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
-                              </svg>
-                            </button>
+                  {items.map(item => {
+                    // Extract the footwear sizes defined in the admin panel schema[cite: 4]
+                    const availableSizes = item.product.footwearDetails?.sizes || [];
+
+                    return (
+                      <div key={item.key} className="flex gap-3 py-4 border-b last:border-0" style={{borderColor:'var(--border)'}}>
+                        <div className="w-[72px] h-[72px] rounded-xl flex-shrink-0 overflow-hidden border" style={{background:'var(--cream)',borderColor:'var(--border)'}}>
+                          {item.product.images?.[0]
+                            ? <img src={item.product.images[0]} alt={item.product.name} className="w-full h-full object-cover"/>
+                            : <div className="w-full h-full flex items-center justify-center text-2xl">{item.product.type==='footwear'?'👠':'🏺'}</div>}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium line-clamp-1" style={{color:'var(--ink)'}}>{item.product.name}</p>
+                          
+                          {/* Dynamic Size Selector (Footwear) vs Static Label (Non-Footwear)[cite: 2] */}
+                          {item.product.type === 'footwear' ? (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className="text-[11px] font-medium" style={{color:'var(--ink-soft)'}}>Size:</span>
+                              
+                              {availableSizes.length > 0 ? (
+                                <select
+                                  value={item.size || ''}
+                                  onChange={(e) => handleSizeChange(item.key, Number(e.target.value))}
+                                  className="text-xs font-semibold bg-transparent border rounded px-2 py-0.5 outline-none cursor-pointer"
+                                  style={{borderColor: 'var(--border)', color: 'var(--ink)'}}
+                                >
+                                  <option value="" disabled>Select Size</option>
+                                  {availableSizes.map(size => (
+                                    <option key={size} value={size}>
+                                      EU {size}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="text-xs italic" style={{color:'var(--ink-soft)'}}>
+                                  {item.size ? `EU ${item.size}` : 'No sizes configured'}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-xs mt-0.5" style={{color:'var(--ink-soft)'}}>
+                              {item.size ? `EU ${item.size}` : item.product.category}
+                            </p>
+                          )}
+
+                          <div className="flex items-center justify-between mt-2.5">
+                            <span className="text-sm font-bold" style={{color:'var(--teal)'}}>{fmt(item.product.price*item.qty)}</span>
+                            
+                            {/* Quantity Controls with explicit "Qty:" label[cite: 2] */}
+                            <div className="flex items-center gap-1">
+                              <span className="text-[11px] font-medium mr-1" style={{color:'var(--ink-soft)'}}>Qty:</span>
+                              <button onClick={()=>updateQty(item.key,item.qty-1)}
+                                      className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-medium transition-colors"
+                                      style={{background:'var(--bone)',color:'var(--ink)'}}>−</button>
+                              <span className="w-6 text-center text-sm font-medium" style={{color:'var(--ink)'}}>{item.qty}</span>
+                              <button onClick={()=>updateQty(item.key,item.qty+1)}
+                                      className="w-7 h-7 rounded-full flex items-center justify-center text-sm font-medium transition-colors"
+                                      style={{background:'var(--bone)',color:'var(--ink)'}}>+</button>
+                              <button onClick={()=>removeItem(item.key)}
+                                      className="w-7 h-7 rounded-full flex items-center justify-center ml-1 transition-colors"
+                                      style={{color:'#ccc'}}>
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

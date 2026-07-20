@@ -6,9 +6,22 @@ import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCartStore, useAuthStore, api } from '../stores';
 import { useToast } from '../hooks/useToast';
-import { getDeliveryFee } from '../utils/deliveryZones';
+import { getDeliveryFee, DELIVERY_ZONES } from '../utils/deliveryZones';
 
 const fmt = n => `UGX ${n?.toLocaleString()}`;
+
+const toTitleCase = str => str.replace(/\b\w/g, c => c.toUpperCase());
+
+// Finds which zone a given town/area string belongs to (used to pre-select
+// the Region dropdown when a saved address already has a city value).
+function findZoneKeyForTown(town) {
+  if (!town) return '';
+  const q = town.toLowerCase().trim();
+  for (const [key, zone] of Object.entries(DELIVERY_ZONES)) {
+    if (zone.areas.includes(q)) return key;
+  }
+  return '';
+}
 
 // Removed email validation requirement completely
 const schema = z.object({
@@ -124,15 +137,21 @@ export default function Checkout() {
   const defaultAddress = user?.addresses?.find(a => a.isDefault) || user?.addresses?.[0] || null;
   const [differentAddress, setDifferentAddress] = useState(false);
 
-  const { register, handleSubmit, watch, formState:{ errors } } = useForm({
+  const prefillCity = user?.addresses?.find(a => a.isDefault)?.city || user?.addresses?.[0]?.city || '';
+
+  const { register, handleSubmit, watch, setValue, formState:{ errors } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: {
       firstName: user?.name?.split(' ')[0] || '',
       lastName:  user?.name?.split(' ').slice(1).join(' ') || '',
       phone:     user?.phone || '',
-      city:      user?.addresses?.find(a => a.isDefault)?.city || user?.addresses?.[0]?.city || '',
+      city:      prefillCity,
     },
   });
+
+  // Drives the Town dropdown's available options; pre-selected from any
+  // saved address so returning users don't lose their region on load.
+  const [selectedZone, setSelectedZone] = useState(() => findZoneKeyForTown(prefillCity));
 
   const phoneValue = watch('phone');
   const cityValue  = watch('city');
@@ -156,7 +175,7 @@ export default function Checkout() {
   const dynamicTotal = Math.max(0, (subtotal - discountAmount) + deliveryInfo.fee);
 
   const requiresVerification = guestMode === 'sms' && !smsVerified;
-  const isPayDisabled = loading || requiresVerification;
+  const isPayDisabled = loading || requiresVerification || !deliveryInfo.isValid;
 
   // ── STEP 5: Async Coupon Verification API Pipeline ──
   const handleApplyCoupon = async (codeOverride) => {
@@ -412,8 +431,41 @@ export default function Checkout() {
                               ← Use saved address instead
                             </button>
                           )}
-                          <label className={labelCls}>Town</label>
-                          <input {...register('city')} className={inputCls} placeholder="e.g. Ntinda, Kisaasi, Seeta, Entebbe" />
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className={labelCls}>Region</label>
+                              <select
+                                value={selectedZone}
+                                onChange={e => {
+                                  const zoneKey = e.target.value;
+                                  setSelectedZone(zoneKey);
+                                  setValue('city', '', { shouldValidate: false });
+                                }}
+                                className={inputCls}
+                              >
+                                <option value="">Select region…</option>
+                                {Object.entries(DELIVERY_ZONES).map(([key, zone]) => (
+                                  <option key={key} value={key}>{zone.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className={labelCls}>Town</label>
+                              <select
+                                value={cityValue || ''}
+                                onChange={e => setValue('city', e.target.value, { shouldValidate: true })}
+                                disabled={!selectedZone}
+                                className={inputCls}
+                              >
+                                <option value="">{selectedZone ? 'Select town…' : 'Pick region first'}</option>
+                                {selectedZone && [...DELIVERY_ZONES[selectedZone].areas]
+                                  .sort((a, b) => a.localeCompare(b))
+                                  .map(area => (
+                                    <option key={area} value={area}>{toTitleCase(area)}</option>
+                                  ))}
+                              </select>
+                            </div>
+                          </div>
                           {errors.city && <p className="text-xs mt-1" style={{ color:'#e05252' }}>{errors.city.message}</p>}
                         </div>
                       )}

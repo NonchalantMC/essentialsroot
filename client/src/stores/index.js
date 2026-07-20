@@ -131,6 +131,36 @@ export const useCartStore = create(
         set(get()._recalc(get().items.map(i => i.key === key ? { ...i, qty } : i)));
       },
 
+      // ─── Added Action: Handles safe size updates inside the drawer ───
+      updateSize: (oldKey, newSize) => {
+        const currentItems = get().items;
+        const targetItem = currentItems.find(i => i.key === oldKey);
+        if (!targetItem) return;
+
+        // 1. Generate the new unique key for the target size change
+        const product = targetItem.product;
+        const newKey = `${product._id || product.id}-${newSize}-${targetItem.color || ''}`;
+
+        let nextItems;
+
+        // 2. Check if this size combination already exists elsewhere in the cart
+        const collisionItem = currentItems.find(i => i.key === newKey);
+
+        if (collisionItem && oldKey !== newKey) {
+          // Merge quantities into the colliding item and remove the old item
+          nextItems = currentItems
+            .map(i => i.key === newKey ? { ...i, qty: i.qty + targetItem.qty } : i)
+            .filter(i => i.key !== oldKey);
+        } else {
+          // Simply update the size and update the item key in place
+          nextItems = currentItems.map(i => 
+            i.key === oldKey ? { ...i, size: newSize, key: newKey } : i
+          );
+        }
+
+        set(get()._recalc(nextItems));
+      },
+
       clearCart: () => set({ items: [], count: 0, subtotal: 0, total: 0 }),
     }),
     {
@@ -147,6 +177,7 @@ export const useCartStore = create(
     }
   )
 );
+
 
 // ─── WISHLIST STORE ───────────────────────────────────────────────────────────
 export const useWishlistStore = create(
