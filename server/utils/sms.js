@@ -1,11 +1,22 @@
-const credentials = {
-  apiKey: process.env.AT_API_KEY,
-  username: process.env.AT_USERNAME || 'sandbox'
-};
-
-// Initialize Africa's Talking SDK
-const AfricasTalking = require('africastalking')(credentials);
-const smsService = AfricasTalking.SMS;
+// The Africa's Talking SDK is initialized lazily (on first actual use) rather
+// than at the top of this file. Firebase Cloud Functions runs a "source
+// analysis" pass at deploy time to discover what functions exist — this pass
+// executes the file's top-level code, but WITHOUT secrets injected yet (those
+// only get attached to the real runtime after deploy completes). Initializing
+// the SDK eagerly here means `AT_API_KEY` is `undefined` during that analysis
+// step, which throws a validation error and fails the entire deploy before it
+// even starts — exactly the "apiKey is required" error this replaces.
+let smsService = null;
+function getSmsService() {
+  if (!smsService) {
+    const AfricasTalking = require('africastalking')({
+      apiKey:   process.env.AT_API_KEY,
+      username: process.env.AT_USERNAME || 'sandbox',
+    });
+    smsService = AfricasTalking.SMS;
+  }
+  return smsService;
+}
 
 /**
  * Formats local East African phone numbers into standard E.164 international formatting
@@ -60,7 +71,7 @@ async function sendSMS({ to, message }) {
       options.from = process.env.AT_SENDER_ID;
     }
 
-    const response = await smsService.send(options);
+    const response = await getSmsService().send(options);
     console.log(`✅ SMS successfully dispatched to ${formattedRecipient}`);
     return response;
   } catch (error) {

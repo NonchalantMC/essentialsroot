@@ -399,6 +399,26 @@ function DashboardHome() {
         <StatCard icon="🛍️" label="Active Products" value={stats?.totalProducts ?? '—'} sub={`${stats?.lowStock ?? 0} low stock`} color="red" />
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard icon="📈" label="Revenue This Month"
+                  value={stats ? `UGX ${(stats.revenueThisMonth/1e3).toFixed(0)}K` : '—'}
+                  sub={
+                    stats?.revenueChangePct === null || stats?.revenueChangePct === undefined
+                      ? 'No prior month to compare'
+                      : `${stats.revenueChangePct >= 0 ? '+' : ''}${stats.revenueChangePct}% vs last month`
+                  }
+                  color="sage" />
+        <StatCard icon="🧾" label="Avg. Order Value"
+                  value={stats ? `UGX ${stats.avgOrderValue?.toLocaleString()}` : '—'}
+                  sub="Per order, all time" color="blue" />
+        <StatCard icon="🏷️" label="Discounts Given"
+                  value={stats ? `UGX ${stats.totalDiscountGiven?.toLocaleString()}` : '—'}
+                  sub="Total across paid orders" color="gold" />
+        <StatCard icon="🎟️" label="Coupon Redemptions"
+                  value={stats?.totalCouponRedemptions ?? '—'}
+                  sub={`${stats?.activeCouponsCount ?? 0} active coupons`} color="red" />
+      </div>
+
       <div className="bg-white border border-[#ede9e2] rounded-2xl p-5 overflow-hidden">
         <h3 className="font-semibold mb-4">Recent Orders</h3>
         {orders.length === 0 ? (

@@ -45,4 +45,5 @@ export const authService = {
   updateProfile:  (data)            => api.patch('/auth/profile', data),
   forgotPassword: (email)           => api.post('/auth/forgot-password', { email }),
   resetPassword:  (token, password) => api.post(`/auth/reset-password/${token}`, { password }),
+  confirmEmailChange: (token)       => api.post(`/auth/confirm-email-change/${token}`),
 };

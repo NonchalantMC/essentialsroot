@@ -4,6 +4,7 @@ const FirestoreService = require('../services/FirestoreService');
 const { optionalAuth } = require('../middleware/auth');
 const { submitOrderRequest, getTransactionStatus, mapPaymentStatus } = require('../utils/pesapal');
 const { sendOrderConfirmation } = require('../utils/email');
+const { sendOrderPlacedSMS } = require('../utils/sms');
 
 const OrderService = new FirestoreService('orders');
 const UserService  = new FirestoreService('users');
@@ -34,6 +35,16 @@ async function handlePaid(order, contact) {
     const updated = await OrderService.findById(order._id || order.id);
     await sendOrderConfirmation(updated, contact.email, contact.name);
     console.log(`📧 Confirmation sent → ${contact.email} (${order.orderNumber})`);
+  }
+  // Moved here from order creation — that fired for every order regardless
+  // of whether payment ever actually completed, telling customers "your
+  // order has been received" before they'd paid a shilling. This only runs
+  // once, guarded by the orderStatus check above, and only after payment is
+  // genuinely confirmed (this function is only called with newStatus==='paid').
+  const phone = order.shippingAddress?.phone;
+  if (phone) {
+    sendOrderPlacedSMS(phone, order.orderNumber, order.total)
+      .catch(err => console.error('Order-placed SMS failed:', err.message));
   }
 }
 

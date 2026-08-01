@@ -1,14 +1,3 @@
-// ─── Essentials256 Email — single transport: Brevo API ───────────────────────
-// All outbound email goes through Brevo's REST API. nodemailer/SMTP is not
-// used — it was removed because Gmail SMTP isn't built for transactional
-// volume and risks rate-limiting and spam-folder placement at scale.
-//
-// Required env vars:
-//   BREVO_API_KEY   — from https://app.brevo.com/settings/keys/api
-//   FROM_EMAIL      — verified sender in Brevo (default: comms@essentials256.com)
-//   ADMIN_EMAIL     — where admin alerts go
-//   CLIENT_URL      — frontend base URL for email links
-// ─────────────────────────────────────────────────────────────────────────────
 
 const fmt  = n => `UGX ${Number(n || 0).toLocaleString()}`;
 const YEAR = new Date().getFullYear();
@@ -212,7 +201,7 @@ function orderConfirmationHtml(order, name) {
     </div>
     <div style="text-align:center;margin-top:24px;padding-top:24px;border-top:1px solid #f0ede8;">
       <p style="color:#999;font-size:13px;margin:0 0 8px;">Questions? We're here to help.</p>
-      <a href="https://wa.me/256700000000?text=Hi, I need help with order ${order.orderNumber}" style="color:#2C5F2D;font-size:13px;font-weight:600;text-decoration:none;">💬 WhatsApp</a>
+      <a href="https://wa.me/256749156332?text=Hi, I need help with order ${order.orderNumber}" style="color:#2C5F2D;font-size:13px;font-weight:600;text-decoration:none;">💬 WhatsApp</a>
       &nbsp;·&nbsp;
       <a href="mailto:hello@essentials256.com" style="color:#2C5F2D;font-size:13px;font-weight:600;text-decoration:none;">✉️ Email us</a>
     </div>
@@ -246,6 +235,17 @@ function resetPasswordHtml(name, resetUrl) {
       <a href="${resetUrl}" style="display:inline-block;background:#2C5F2D;color:#fff;text-decoration:none;padding:14px 32px;border-radius:100px;font-size:14px;font-weight:600;">Reset Password</a>
     </div>
     <p style="color:#999;font-size:13px;text-align:center;">If you didn't request this, you can safely ignore this email.</p>
+  </div>`);
+}
+
+function confirmEmailChangeHtml(name, confirmUrl) {
+  return wrap(`<div style="padding:40px;">
+    <h1 style="font-family:Georgia,serif;font-size:26px;color:#141414;margin:0 0 12px;">Confirm Your New Email</h1>
+    <p style="color:#5a5a5a;font-size:15px;line-height:1.6;margin:0 0 24px;">Hi ${name}, someone requested to change the login email on your Essentials256 admin account to this address. Click below to confirm it. This link expires in 1 hour.</p>
+    <div style="text-align:center;margin:32px 0;">
+      <a href="${confirmUrl}" style="display:inline-block;background:#2C5F2D;color:#fff;text-decoration:none;padding:14px 32px;border-radius:100px;font-size:14px;font-weight:600;">Confirm New Email</a>
+    </div>
+    <p style="color:#999;font-size:13px;text-align:center;">If you didn't request this, ignore this email — your login email won't change unless this link is clicked.</p>
   </div>`);
 }
 
@@ -299,6 +299,14 @@ async function sendPasswordReset(email, name, resetUrl) {
   });
 }
 
+async function sendEmailChangeConfirmation(newEmail, name, confirmUrl) {
+  await sendEmail({
+    to:      newEmail,
+    subject: 'Confirm your new Essentials256 login email',
+    html:    confirmEmailChangeHtml(name, confirmUrl),
+  });
+}
+
 module.exports = {
   sendEmail,
   sendWelcomeEmail,
@@ -308,4 +316,5 @@ module.exports = {
   sendOrderConfirmation,
   sendOrderShipped,
   sendPasswordReset,
+  sendEmailChangeConfirmation,
 };

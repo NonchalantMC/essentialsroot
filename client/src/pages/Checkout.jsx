@@ -18,7 +18,7 @@ function findZoneKeyForTown(town) {
   if (!town) return '';
   const q = town.toLowerCase().trim();
   for (const [key, zone] of Object.entries(DELIVERY_ZONES)) {
-    if (zone.areas.includes(q)) return key;
+    if (q in zone.areas) return key;
   }
   return '';
 }
@@ -458,7 +458,7 @@ export default function Checkout() {
                                 className={inputCls}
                               >
                                 <option value="">{selectedZone ? 'Select town…' : 'Pick region first'}</option>
-                                {selectedZone && [...DELIVERY_ZONES[selectedZone].areas]
+                                {selectedZone && Object.keys(DELIVERY_ZONES[selectedZone].areas)
                                   .sort((a, b) => a.localeCompare(b))
                                   .map(area => (
                                     <option key={area} value={area}>{toTitleCase(area)}</option>

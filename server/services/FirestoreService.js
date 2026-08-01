@@ -1,6 +1,27 @@
 const { db, docToObj, snapToArr } = require('../config/firebase');
 const { v4: uuid } = require('uuid');
 
+// Firestore rejects `undefined` anywhere in a document — including nested
+// inside objects and arrays, not just top-level fields. This walks the whole
+// structure and drops any `undefined` it finds, recursively, so any route
+// that builds a doc from partially-optional data (order items with an
+// optional size/color, a profile update with an optional field, etc.) can't
+// crash the write. `null` is left alone — that's a valid, intentional
+// Firestore value.
+function stripUndefinedDeep(value) {
+  if (Array.isArray(value)) {
+    return value.map(stripUndefinedDeep);
+  }
+  if (value && typeof value === 'object' && !(value instanceof Date)) {
+    const cleaned = {};
+    Object.entries(value).forEach(([k, v]) => {
+      if (v !== undefined) cleaned[k] = stripUndefinedDeep(v);
+    });
+    return cleaned;
+  }
+  return value;
+}
+
 class FirestoreService {
   constructor(collectionName) {
     this.col  = db.collection(collectionName);
@@ -73,8 +94,7 @@ class FirestoreService {
   async create(data) {
     const id  = uuid();
     const now = new Date().toISOString();
-    const doc = { ...data, createdAt: now, updatedAt: now };
-    Object.keys(doc).forEach(k => doc[k] === undefined && delete doc[k]);
+    const doc = stripUndefinedDeep({ ...data, createdAt: now, updatedAt: now });
     await this.col.doc(id).set(doc);
     return { ...doc, _id: id, id };
   }
@@ -82,8 +102,7 @@ class FirestoreService {
   async updateById(id, data) {
     if (!id) throw new Error('updateById requires an id');
     const now     = new Date().toISOString();
-    const updates = { ...data, updatedAt: now };
-    Object.keys(updates).forEach(k => updates[k] === undefined && delete updates[k]);
+    const updates = stripUndefinedDeep({ ...data, updatedAt: now });
     await this.col.doc(String(id)).update(updates);
     return this.findById(id);
   }

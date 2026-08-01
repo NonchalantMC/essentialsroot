@@ -3,7 +3,7 @@ const router   = express.Router();
 const FirestoreService = require('../services/FirestoreService');
 const { protect, adminOnly } = require('../middleware/auth');
 const { calculateServerDeliveryFee } = require('../utils/deliveryZones');
-const { sendSMS, sendOtpSMS, sendOrderPlacedSMS, sendOrderShippedSMS } = require('../utils/sms');
+const { sendSMS, sendOtpSMS, sendOrderShippedSMS } = require('../utils/sms');
 const { notifyAdminOfNewOrder } = require('../utils/email');
 const { revalidateOrderItems } = require('../utils/orderPricing');
 const { applyCouponToOrder } = require('./coupons');
@@ -134,6 +134,14 @@ router.post('/', protect, async (req, res) => {
 
     const verifiedDelivery = calculateServerDeliveryFee(shippingAddress?.city, subtotal);
 
+    // Pre-existing gap, closed here: `verifiedDelivery.fee` is `null` for an
+    // unrecognized town, and `null` silently coerces to 0 in the total-fee
+    // arithmetic below — meaning a bad/tampered/unmatched city value used to
+    // result in a real order shipping for free rather than being rejected.
+    if (!verifiedDelivery.isValid) {
+      return res.status(400).json({ message: 'Please select a valid delivery town from the list.' });
+    }
+
     let discountAmount = 0;
     let appliedCoupon  = null;
 
@@ -169,7 +177,11 @@ router.post('/', protect, async (req, res) => {
     });
 
     alertAdminOfNewOrder(order, req.user.name || 'Registered Customer', req.user.phone || 'N/A');
-    if (req.user.phone) sendOrderPlacedSMS(req.user.phone, order.orderNumber, order.total);
+    // Customer-facing "order received" SMS moved to payments.js handlePaid() —
+    // it now only fires once payment is actually confirmed via PesaPal's IPN,
+    // not at order creation before any payment has happened. The admin alert
+    // above is intentionally left here — you still want to know an order
+    // attempt came in even if payment never completes.
     res.status(201).json(order);
   } catch (err) {
     console.error(err);
@@ -197,6 +209,10 @@ router.post('/guest', async (req, res) => {
     const { items: trustedItems, subtotal } = pricing;
 
     const verifiedDelivery = calculateServerDeliveryFee(shippingAddress?.city, subtotal);
+
+    if (!verifiedDelivery.isValid) {
+      return res.status(400).json({ message: 'Please select a valid delivery town from the list.' });
+    }
 
     let guestUser = null;
     if (guestInfo?.phone) {
@@ -251,7 +267,7 @@ router.post('/guest', async (req, res) => {
     });
 
     alertAdminOfNewOrder(order, guestInfo?.name || 'Guest Customer', guestInfo?.phone || 'N/A');
-    if (guestInfo?.phone) sendOrderPlacedSMS(guestInfo.phone, order.orderNumber, order.total);
+    // Same change as the authenticated order route above — see that comment.
     res.status(201).json(order);
   } catch (err) {
     console.error(err);

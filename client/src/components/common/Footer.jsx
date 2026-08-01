@@ -68,7 +68,7 @@ export default function Footer() {
             </Link>
 
             <p className="text-[13px] leading-relaxed mb-4" style={{color:'rgba(255,255,255,.45)'}}>
-              Premium ladies footwear and interior decor for the modern African woman.
+              Premium footwear and interior decor.
             </p>
            <div className="flex gap-2">
   {SOCIALS.map(s => (

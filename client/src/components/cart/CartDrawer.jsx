@@ -5,10 +5,10 @@ import { useCartStore } from '../../stores';
 const fmt = n => `UGX ${n?.toLocaleString()}`;
 
 export default function CartDrawer() {
-  // Pulling state and update methods from your custom cart store[cite: 2]
-  const { isOpen, closeCart, items, updateQty, removeItem, subtotal, updateSize } = useCartStore();
+  // Pulling state and update methods from your custom cart store (added clearCart)
+  const { isOpen, closeCart, items, updateQty, removeItem, subtotal, updateSize, clearCart } = useCartStore();
 
-  // Helper function to handle size selection dynamically[cite: 2]
+  // Helper function to handle size selection dynamically
   const handleSizeChange = (itemKey, newSize) => {
     if (updateSize) {
       updateSize(itemKey, newSize);
@@ -16,6 +16,11 @@ export default function CartDrawer() {
       console.warn("updateSize action is not defined in your useCartStore. Please update your stores/index.js file.");
     }
   };
+
+ // Clear cart handler
+const handleClearCart = () => {
+  clearCart();
+};
 
   return (
     <AnimatePresence>
@@ -32,10 +37,27 @@ export default function CartDrawer() {
             className="fixed right-0 top-0 h-full w-full max-w-sm bg-white z-50 flex flex-col"
             style={{boxShadow:'0 0 40px rgba(33,40,54,.18)'}}>
 
+            {/* Header Section */}
             <div className="flex items-center justify-between px-5 py-4 border-b" style={{borderColor:'var(--border)'}}>
               <div>
                 <h2 className="font-semibold text-lg" style={{color:'var(--ink)'}}>Shopping Cart</h2>
-                <p className="text-xs mt-0.5" style={{color:'var(--ink-soft)'}}>{items.length} item{items.length!==1?'s':''}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-xs" style={{color:'var(--ink-soft)'}}>{items.length} item{items.length!==1?'s':''}</p>
+                  
+                  {/* Clear All Button */}
+                  {items.length > 0 && (
+                    <>
+                      <span className="text-xs text-gray-300">•</span>
+                      <button 
+                        onClick={handleClearCart}
+                        className="text-xs underline hover:no-underline transition-opacity hover:opacity-80 font-medium"
+                        style={{color:'#3d4a5c'}}
+                      >
+                        Clear All
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               <button onClick={closeCart}
                       className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
@@ -64,7 +86,7 @@ export default function CartDrawer() {
               ) : (
                 <div className="space-y-1">
                   {items.map(item => {
-                    // Extract the footwear sizes defined in the admin panel schema[cite: 4]
+                    // Extract the footwear sizes defined in the admin panel schema
                     const availableSizes = item.product.footwearDetails?.sizes || [];
 
                     return (
@@ -77,7 +99,7 @@ export default function CartDrawer() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium line-clamp-1" style={{color:'var(--ink)'}}>{item.product.name}</p>
                           
-                          {/* Dynamic Size Selector (Footwear) vs Static Label (Non-Footwear)[cite: 2] */}
+                          {/* Dynamic Size Selector (Footwear) vs Static Label (Non-Footwear) */}
                           {item.product.type === 'footwear' ? (
                             <div className="flex items-center gap-1.5 mt-1">
                               <span className="text-[11px] font-medium" style={{color:'var(--ink-soft)'}}>Size:</span>
@@ -111,7 +133,7 @@ export default function CartDrawer() {
                           <div className="flex items-center justify-between mt-2.5">
                             <span className="text-sm font-bold" style={{color:'var(--teal)'}}>{fmt(item.product.price*item.qty)}</span>
                             
-                            {/* Quantity Controls with explicit "Qty:" label[cite: 2] */}
+                            {/* Quantity Controls with explicit "Qty:" label */}
                             <div className="flex items-center gap-1">
                               <span className="text-[11px] font-medium mr-1" style={{color:'var(--ink-soft)'}}>Qty:</span>
                               <button onClick={()=>updateQty(item.key,item.qty-1)}

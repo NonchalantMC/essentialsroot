@@ -1,7 +1,10 @@
 const express  = require('express');
 const router   = express.Router();
+const bcrypt   = require('bcryptjs');
+const crypto   = require('crypto');
 const FirestoreService = require('../services/FirestoreService');
 const { protect, adminOnly } = require('../middleware/auth');
+const { sendEmailChangeConfirmation } = require('../utils/email');
 
 const UserService    = new FirestoreService('users');
 const ProductService = new FirestoreService('products');
@@ -10,6 +13,120 @@ const CouponService      = new FirestoreService('coupons');
 const RedemptionService  = new FirestoreService('couponRedemptions');
 
 router.use(protect, adminOnly);
+
+// PUT /api/admin/change-password
+// AdminSettings.jsx already called this route correctly — it just didn't
+// exist server-side, so every attempt 404'd silently underneath a form that
+// otherwise looked and behaved like it worked.
+router.put('/change-password', async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current and new password are required' });
+    }
+
+    // Same policy enforced at register/reset — kept consistent rather than
+    // the separate, weaker 6-char minimum the frontend form was checking.
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters' });
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      return res.status(400).json({ message: 'Password must include an uppercase letter' });
+    }
+    if (!/[0-9]/.test(newPassword)) {
+      return res.status(400).json({ message: 'Password must include a number' });
+    }
+
+    const userId = req.user.id || req.user._id;
+    const user   = await UserService.findById(userId);
+    if (!user || !user.passwordHash) {
+      return res.status(404).json({ message: 'Admin account not found' });
+    }
+
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+
+    const passwordHash    = await bcrypt.hash(newPassword, 12);
+    const currentVersion  = user.tokenVersion ?? 0;
+
+    await UserService.updateById(userId, {
+      passwordHash,
+      // Invalidates every existing token for this account, including the
+      // one making this very request — the admin will need to log in again
+      // right after this succeeds. That's intentional: it's what actually
+      // revokes access for anyone who had the old password/an old token.
+      tokenVersion: currentVersion + 1,
+    });
+
+    res.json({ message: 'Password updated successfully. Please log in again.' });
+  } catch (err) {
+    console.error('change-password error:', err);
+    res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+});
+
+// PUT /api/admin/change-email
+// Requires the current password, same principle as change-password — email
+// is both the login identifier and where a password-reset link would be
+// sent, so this shouldn't be changeable from a hijacked session token alone.
+// This route only *starts* the change: current password confirms it's really
+// the admin requesting it, but the email doesn't actually update until the
+// confirmation link sent to the NEW address is clicked (POST /api/auth/
+// confirm-email-change/:token in auth.js) — proving that inbox is really
+// under the admin's control, not just typed into a form.
+router.put('/change-email', async (req, res) => {
+  try {
+    const { currentPassword, newEmail } = req.body;
+    if (!currentPassword || !newEmail) {
+      return res.status(400).json({ message: 'Current password and new email are required' });
+    }
+
+    const normalizedEmail = String(newEmail).toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({ message: 'Please enter a valid email address' });
+    }
+
+    const userId = req.user.id || req.user._id;
+    const user   = await UserService.findById(userId);
+    if (!user || !user.passwordHash) {
+      return res.status(404).json({ message: 'Admin account not found' });
+    }
+
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+
+    if (normalizedEmail === user.email) {
+      return res.status(400).json({ message: 'That is already your current email address' });
+    }
+
+    const existing = await UserService.findOne({ email: normalizedEmail });
+    if (existing) {
+      return res.status(409).json({ message: 'That email address is already in use' });
+    }
+
+    const rawToken    = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    await UserService.updateById(userId, {
+      pendingEmail:       normalizedEmail,
+      emailChangeToken:   hashedToken,
+      emailChangeExpires: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1 hour, same TTL as password reset
+    });
+
+    const confirmUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/confirm-email/${rawToken}`;
+    sendEmailChangeConfirmation(normalizedEmail, user.name, confirmUrl)
+      .catch(err => console.error('Email change confirmation send failed:', err));
+
+    res.json({ message: `Confirmation link sent to ${normalizedEmail}. Click it to complete the change.` });
+  } catch (err) {
+    console.error('change-email error:', err);
+    res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+});
 
 // GET /api/admin/stats
 router.get('/stats', async (req, res) => {
@@ -32,18 +149,48 @@ router.get('/stats', async (req, res) => {
 
     const totalRevenue = allPaidOrders.reduce((s, o) => s + (o.total || 0), 0);
     const lowStock     = lowStockProducts.filter(p => p.stock < 10 && p.stock > 0).length;
-    
+
     const activeCouponsCount = allCoupons.length;
     const totalCouponRedemptions = allCoupons.reduce((sum, c) => sum + (c.usesCount || 0), 0);
 
-    res.json({ 
-      totalOrders, 
-      totalRevenue, 
-      totalCustomers, 
-      totalProducts, 
+    const avgOrderValue = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+    const totalDiscountGiven = allPaidOrders.reduce((s, o) => s + (o.discountAmount || 0), 0);
+
+    // Revenue this month vs. last month, computed from the same 500 paid
+    // orders already fetched above — no extra query needed. Capped by that
+    // same 500-order fetch limit, so once order volume grows past that,
+    // this endpoint (and its `limit`) should be revisited.
+    const now = new Date();
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    let revenueThisMonth = 0;
+    let revenueLastMonth = 0;
+    for (const order of allPaidOrders) {
+      const created = new Date(order.createdAt);
+      if (created >= startOfThisMonth) {
+        revenueThisMonth += order.total || 0;
+      } else if (created >= startOfLastMonth && created < startOfThisMonth) {
+        revenueLastMonth += order.total || 0;
+      }
+    }
+    const revenueChangePct = revenueLastMonth > 0
+      ? Math.round(((revenueThisMonth - revenueLastMonth) / revenueLastMonth) * 100)
+      : null; // no baseline to compare against yet
+
+    res.json({
+      totalOrders,
+      totalRevenue,
+      totalCustomers,
+      totalProducts,
       lowStock,
       activeCouponsCount,
-      totalCouponRedemptions
+      totalCouponRedemptions,
+      avgOrderValue,
+      totalDiscountGiven,
+      revenueThisMonth,
+      revenueLastMonth,
+      revenueChangePct,
     });
   } catch (err) {
     console.error(err);

@@ -147,9 +147,22 @@ if (
 //   memory: 512MB — headroom for image processing and concurrent requests
 //   timeoutSeconds: 60 — covers PesaPal's occasionally slow API responses
 //   maxInstances: 10 — caps runaway scaling costs during unexpected traffic spikes
+//   secrets: values set via `firebase functions:secrets:set <NAME>`, stored in
+//   Secret Manager. Listing them here is what makes them show up as
+//   process.env.<NAME> at runtime — without this array, setting a secret via
+//   the CLI alone does NOT make it accessible to the function.
 exports.api = onRequest({
   memory:         '512MiB',
   timeoutSeconds: 60,
   maxInstances:   10,
   cors:           true,
+  secrets: [
+    'JWT_SECRET',
+    'PESAPAL_CONSUMER_KEY',
+    'PESAPAL_CONSUMER_SECRET',
+    'BREVO_API_KEY',
+    'CLOUDINARY_API_KEY',
+    'CLOUDINARY_API_SECRET',
+    'AT_API_KEY',
+  ],
 }, app);

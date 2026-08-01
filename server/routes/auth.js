@@ -204,6 +204,44 @@ router.post('/reset-password/:token', async (req, res) => {
   }
 });
 
+// POST /api/auth/confirm-email-change/:token
+// Public/unauthenticated on purpose — same reasoning as reset-password: the
+// admin may be checking their new inbox on a device with no active session
+// here at all. The token itself (only ever sent to the new address) is what
+// proves authorization, not a login. Admin's current password was already
+// verified back in PUT /api/admin/change-email before this token was issued;
+// this step only proves the new inbox is real and under their control.
+router.post('/confirm-email-change/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token) return res.status(400).json({ message: 'Confirmation token is required' });
+
+    const hashedToken = hashToken(token);
+    const user = await UserService.findOne({ emailChangeToken: hashedToken });
+
+    if (!user || !user.emailChangeExpires || new Date() > new Date(user.emailChangeExpires) || !user.pendingEmail) {
+      return res.status(400).json({ message: 'This confirmation link is invalid or has expired. Please request the change again.' });
+    }
+
+    const currentVersion = user.tokenVersion ?? 0;
+
+    await UserService.updateById(user._id || user.id, {
+      email:              user.pendingEmail,
+      pendingEmail:       null,
+      emailChangeToken:   null,
+      emailChangeExpires: null,
+      // The account's login identifier just changed — invalidate any
+      // existing session tokens (including whichever one initiated this)
+      // so a fresh login is required, matching the change-password pattern.
+      tokenVersion: currentVersion + 1,
+    });
+
+    res.status(200).json({ message: 'Email confirmed and updated. Please log in with your new email.' });
+  } catch (err) {
+    serverErr(res, err);
+  }
+});
+
 // POST /api/auth/logout
 router.post('/logout', protect, async (req, res) => {
   try {

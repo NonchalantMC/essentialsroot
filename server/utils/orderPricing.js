@@ -68,9 +68,15 @@ async function revalidateOrderItems(clientItems) {
       image:     product.images?.[0] || item.image || '',
       price:     trustedPrice,
       quantity,
-      size:      item.size,
-      width:     item.width,
-      color:     item.color,
+      // Firestore rejects `undefined` anywhere in a document, including
+      // nested inside an array element — unlike FirestoreService.create(),
+      // which only strips undefined from top-level fields. These three are
+      // optional per-product (size doesn't apply to decor, width/color may
+      // not apply to every item), so default to null rather than passing
+      // through whatever the client did or didn't send.
+      size:      item.size  ?? null,
+      width:     item.width ?? null,
+      color:     item.color ?? null,
     };
   });
 

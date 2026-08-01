@@ -21,6 +21,7 @@ const Login             = lazy(() => import('./pages/Login').then(m => ({ defaul
 const Register          = lazy(() => import('./pages/Login').then(m => ({ default: m.Register })));
 const ForgotPassword    = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword     = lazy(() => import('./pages/ResetPassword'));
+const ConfirmEmailChange = lazy(() => import('./pages/ConfirmEmailChange'));
 const Admin             = lazy(() => import('./pages/Admin'));
 const PaymentCallback   = lazy(() => import('./pages/PaymentCallback'));
 
@@ -43,6 +44,19 @@ const PageLoader = () => (
     </div>
   </div>
 );
+
+// ── Scroll restoration ────────────────────────────────────────────────────────
+// React Router doesn't reset scroll position on navigation the way a full page
+// load does — without this, clicking a footer/nav link leaves you wherever you
+// were scrolled to on the previous page. This runs on every route change and
+// fixes it app-wide (footer links, navbar links, product cards, everywhere).
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
 
 // ── Protected route ───────────────────────────────────────────────────────────
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -94,6 +108,7 @@ function AppShell() {
             <Route path="/register"           element={<Register />} />
             <Route path="/forgot-password"    element={<ForgotPassword />} />
             <Route path="/reset-password/:token" element={<ResetPassword />} />
+            <Route path="/confirm-email/:token" element={<ConfirmEmailChange />} />
             <Route path="/payment/callback"   element={<PaymentCallback />} />
 
             {/* ── Static pages ── */}
@@ -127,6 +142,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ErrorBoundary>
+        <ScrollToTop />
         <AppShell />
       </ErrorBoundary>
     </BrowserRouter>
