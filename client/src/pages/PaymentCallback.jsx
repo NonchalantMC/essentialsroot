@@ -11,13 +11,22 @@ export default function PaymentCallback() {
     const orderNumber = searchParams.get('orderNumber');
     if (!orderNumber) { navigate('/'); return; }
 
+    // Registered users prove identity via their session token automatically.
+    // Guests have none — this is the phone Checkout.jsx stashed right after
+    // order creation, letting the status check confirm it's the same guest
+    // rather than trusting orderNumber alone (order numbers are sequential
+    // and guessable, unlike the random order-doc IDs used elsewhere).
+    const guestPhone = sessionStorage.getItem('guestOrderPhone');
+
     // Poll payment status
     const check = async () => {
       try {
-        const { data } = await paymentService.checkStatus(orderNumber);
+        const { data } = await paymentService.checkStatus(orderNumber, guestPhone);
         if (data.paymentStatus === 'paid') {
+          sessionStorage.removeItem('guestOrderPhone');
           navigate(`/order/${orderNumber}`, { replace: true });
         } else if (data.paymentStatus === 'failed') {
+          sessionStorage.removeItem('guestOrderPhone');
           setStatus('failed');
         } else {
           // Still pending — retry in 3 seconds

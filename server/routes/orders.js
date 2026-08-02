@@ -1,6 +1,7 @@
 const express  = require('express');
 const router   = express.Router();
 const FirestoreService = require('../services/FirestoreService');
+const { admin } = require('../config/firebase');
 const { protect, adminOnly } = require('../middleware/auth');
 const { calculateServerDeliveryFee } = require('../utils/deliveryZones');
 const { sendSMS, sendOtpSMS, sendOrderShippedSMS } = require('../utils/sms');
@@ -102,9 +103,21 @@ router.post('/guest/verify-otp', async (req, res) => {
       return res.status(400).json({ message: 'Invalid verification code' });
     }
 
-    // Invalidate the OTP immediately — prevents replay of the same code
-    // within the 5-minute window if intercepted or observed.
-    await OtpService.deleteById(otpRecord._id || otpRecord.id);
+    // Don't delete on success — repurpose this record as short-lived proof
+    // of verification. Previously this was deleted here and the client's
+    // `smsVerified` flag was trusted at face value in the order payload,
+    // which meant POST /orders/guest could be called directly with any
+    // phone number and smsVerified:true hardcoded, never having called this
+    // endpoint at all. That silently defeated the per-customer coupon
+    // dedup in coupons.js, which keys off this same phone number — an
+    // attacker could loop fabricated phone numbers to reuse a single-use
+    // coupon indefinitely. Order creation now looks up and consumes this
+    // record instead of trusting the client's claim.
+    await OtpService.updateById(otpRecord._id || otpRecord.id, {
+      code: null,
+      verified: true,
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 min to complete checkout
+    });
 
     res.status(200).json({ success: true, message: 'Phone number verified successfully' });
   } catch (err) {
@@ -200,6 +213,18 @@ router.post('/guest', async (req, res) => {
   try {
     const { guestInfo, shippingAddress, couponCode, items, ...rest } = req.body;
 
+    // Require actual server-side proof of OTP verification — previously
+    // this only checked that `guestInfo.phone` existed, trusting the
+    // client's own `smsVerified` flag with nothing behind it. See the
+    // comment in guest/verify-otp above for the full explanation.
+    if (!guestInfo?.phone) {
+      return res.status(400).json({ message: 'A verified phone number is required to place a guest order.' });
+    }
+    const verifiedRecord = await OtpService.findOne({ phone: guestInfo.phone, verified: true });
+    if (!verifiedRecord || new Date() > new Date(verifiedRecord.expiresAt)) {
+      return res.status(403).json({ message: 'Please verify your phone number before placing this order.' });
+    }
+
     // Re-price every item against the live product catalog — same trust
     // boundary applied to guest checkout as authenticated checkout.
     const pricing = await revalidateOrderItems(items);
@@ -266,6 +291,15 @@ router.post('/guest', async (req, res) => {
       statusHistory: [{ status: 'pending', note: 'Guest order placed', updatedAt: new Date().toISOString() }],
     });
 
+    // Consume the verification proof now that it's actually been used to
+    // create an order — a single OTP verification shouldn't be reusable
+    // for unlimited order creations. A failed/abandoned payment on this
+    // order means a fresh OTP is needed to try again, which is the right
+    // tradeoff here: the alternative is a verification that stays valid
+    // for the full 30-minute window regardless of how many orders get
+    // created against it.
+    await OtpService.deleteById(verifiedRecord._id || verifiedRecord.id);
+
     alertAdminOfNewOrder(order, guestInfo?.name || 'Guest Customer', guestInfo?.phone || 'N/A');
     // Same change as the authenticated order route above — see that comment.
     res.status(201).json(order);
@@ -325,6 +359,26 @@ router.patch('/:id/status', protect, adminOnly, async (req, res) => {
     if (trackingNumber) updates.trackingNumber = trackingNumber;
 
     const updated = await OrderService.updateById(req.params.id, updates);
+
+    // Stock is decremented once a payment is confirmed (payments.js
+    // handlePaid). Without this, cancelling a paid order would leave that
+    // stock permanently "missing" — decremented for a sale that never
+    // actually shipped. Restore it here, guarded by checking the order
+    // wasn't already cancelled before this update, so a redundant status
+    // change (e.g. admin clicking cancel twice) can't double-restore stock.
+    if (orderStatus === 'cancelled' && order.orderStatus !== 'cancelled' && order.paymentStatus === 'paid') {
+      const batch = admin.firestore().batch();
+      for (const item of order.items || []) {
+        if (!item.productId || !item.quantity) continue;
+        const ref = admin.firestore().collection('products').doc(String(item.productId));
+        batch.update(ref, { stock: admin.firestore.FieldValue.increment(item.quantity) });
+      }
+      try {
+        await batch.commit();
+      } catch (err) {
+        console.error('Stock restoration failed for cancelled order', order.orderNumber, err.message);
+      }
+    }
 
     // Notify the customer by SMS when admin marks the order as shipped
     if (orderStatus === 'shipped') {

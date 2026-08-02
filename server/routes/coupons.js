@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { admin } = require('../config/firebase');
+const { admin, db } = require('../config/firebase');
 const FirestoreService = require('../services/FirestoreService');
 const { protect, adminOnly, optionalAuth } = require('../middleware/auth');
 
@@ -102,15 +102,65 @@ async function applyCouponToOrder(couponCode, subtotal, customerId = null, custo
     throw err;
   }
 
-  // Atomically increment usage counters
-  await admin.firestore()
-    .collection('coupons')
-    .doc(String(result.couponDocId))
-    .update({
+  // Resolve the same identity anchor verifyCouponLogic used internally, so
+  // the lock document below is keyed consistently for registered and guest
+  // customers alike.
+  let targetCustomerId = customerId;
+  if (!targetCustomerId && customerPhone) {
+    const userProfile = await UserService.findOne({ phone: customerPhone });
+    if (userProfile) targetCustomerId = userProfile._id || userProfile.id;
+  }
+
+  const lockId    = `${result.couponDocId}__${targetCustomerId || customerPhone}`;
+  const lockRef   = db.collection('couponUsageLocks').doc(lockId);
+  const couponRef = db.collection('coupons').doc(String(result.couponDocId));
+
+  // verifyCouponLogic's dedup check (above) reads historical orders — but
+  // that read and the order's eventual creation aren't the same operation,
+  // so two near-simultaneous requests (a double-click, two open tabs, a
+  // scripted burst) could both pass that check before either order exists,
+  // and both apply a "once per customer" coupon. Wrapping the check-and-mark
+  // step in a single Firestore transaction against a deterministic
+  // (coupon, customer) lock document closes that gap: Firestore guarantees
+  // only one transaction touching the same document can commit — the other
+  // is retried, sees the lock now exists, and throws.
+  await db.runTransaction(async (t) => {
+    const [lockSnap, couponSnap] = await Promise.all([t.get(lockRef), t.get(couponRef)]);
+
+    if (lockSnap.exists) {
+      const err = new Error('You have already used this promo code once.');
+      err.status = 400;
+      throw err;
+    }
+
+    // Same race, one door over: verifyCouponLogic's usageLimit check above
+    // is a plain read outside any transaction, so a coupon capped at, say,
+    // 100 total uses could be over-redeemed by concurrent requests all
+    // reading count=99 before any of them commits. Re-checking the limit
+    // here, against the count as read inside this same transaction, closes
+    // that the same way the per-customer lock above does.
+    const liveCoupon = couponSnap.data();
+    const liveLimit   = liveCoupon?.usageLimit;
+    const liveCount    = liveCoupon?.usageCount || liveCoupon?.currentClaims || 0;
+    if (liveLimit && liveCount >= liveLimit) {
+      const err = new Error('Invalid or expired promo code.');
+      err.status = 400;
+      throw err;
+    }
+
+    t.set(lockRef, {
+      couponCode:    result.couponCode,
+      couponDocId:   result.couponDocId,
+      customerId:    targetCustomerId || null,
+      customerPhone: customerPhone    || null,
+      createdAt:     new Date().toISOString(),
+    });
+    t.update(couponRef, {
       usageCount:    admin.firestore.FieldValue.increment(1),
       currentClaims: admin.firestore.FieldValue.increment(1),
       usesCount:     admin.firestore.FieldValue.increment(1),
     });
+  });
 
   // Write a redemption record — this is the audit trail that lets you see
   // exactly who used each coupon, when, and on which order.

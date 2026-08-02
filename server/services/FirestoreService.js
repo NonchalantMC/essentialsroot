@@ -125,3 +125,4 @@ class FirestoreService {
 }
 
 module.exports = FirestoreService;
+module.exports.stripUndefinedDeep = stripUndefinedDeep;

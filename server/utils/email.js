@@ -4,17 +4,21 @@ const YEAR = new Date().getFullYear();
 
 // ── Shared HTML wrapper (header + footer) ─────────────────────────────────────
 function wrap(body) {
+  const YEAR = new Date().getFullYear();
+
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-  <body style="margin:0;padding:20px 0;background:#f5f2ed;">
-  <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;">
-    <div style="background:linear-gradient(135deg,#1a2e1a,#2C5F2D);padding:32px 40px;text-align:center;">
-      <div style="font-size:26px;font-style:italic;color:#fff;font-family:Georgia,serif;">Essentials256</div>
-      <div style="font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#c9a840;margin-top:4px;">Uganda</div>
+  <body style="margin:0;padding:20px 0;background:#f5f2ed;font-weight:600;">
+  <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-weight:600;max-width:600px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;">
+    <div style="background:#111111;padding:32px 40px;text-align:center;">
+      <div style="font-weight:600;font-size:24px;line-height:1;letter-spacing:-0.5px;">
+        <span style="color:#ffffff;font-weight:600;">essentials</span><span style="color:#2C5F2D;font-weight:600;">256</span>
+      </div>
+      <div style="font-size:10px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#c9a840;margin-top:8px;">Uganda · Rwanda</div>
     </div>
     ${body}
     <div style="background:#111;padding:24px 40px;text-align:center;">
-      <p style="color:rgba(255,255,255,.5);font-size:12px;margin:0 0 6px;">© ${YEAR} Essentials256. All rights reserved.</p>
-      <p style="color:rgba(255,255,255,.35);font-size:11px;margin:0;">Kampala, Uganda</p>
+      <p style="color:rgba(255,255,255,.5);font-size:12px;font-weight:600;margin:0 0 6px;">© ${YEAR} Essentials256. All rights reserved.</p>
+      <p style="color:rgba(255,255,255,.35);font-size:11px;font-weight:600;margin:0;">Kampala, Uganda</p>
     </div>
   </div></body></html>`;
 }

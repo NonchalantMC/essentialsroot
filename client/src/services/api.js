@@ -34,7 +34,7 @@ export const couponService = {
 // ─── PAYMENT ENDPOINTS ────────────────────────────────────────────────────────
 export const paymentService = {
   initiate:    (orderId)     => api.post('/payments/pesapal/initiate', { orderId }),
-  checkStatus: (orderNumber) => api.get(`/payments/pesapal/status/${orderNumber}`),
+  checkStatus: (orderNumber, phone) => api.get(`/payments/pesapal/status/${orderNumber}`, { params: phone ? { phone } : {} }),
 };
 
 // ─── AUTH ENDPOINTS ───────────────────────────────────────────────────────────

@@ -22,6 +22,7 @@ async function revalidateOrderItems(clientItems) {
   );
 
   const priceChanges = [];
+  const invalidQuantities = [];
   let subtotal = 0;
   let hasMissingProduct = false;
 
@@ -52,11 +53,33 @@ async function revalidateOrderItems(clientItems) {
 
     const quantity = Number(item.quantity);
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
-      return {
-        valid:   false,
-        status:  400,
-        message: `Invalid quantity for "${product.name}". Must be a whole number between 1 and 100.`,
-      };
+      // Bug fixed here: this used to `return` an error object directly from
+      // this map callback, which only exits THIS callback, not
+      // revalidateOrderItems as a whole. The error object silently became
+      // a corrupted line item in trustedItems — missing productId, price,
+      // and quantity — and since it never reached the `subtotal +=` line
+      // below, it contributed nothing to the price actually charged. A
+      // quantity of 0, a negative number, a decimal, or anything over 100
+      // effectively made that item free while still nominally appearing in
+      // the order. Collecting these here and rejecting below, the same
+      // pattern the other two checks in this function already use.
+      invalidQuantities.push({
+        productId: product._id || product.id,
+        name:      product.name,
+        quantity:  item.quantity,
+      });
+      return null;
+    }
+
+    if (typeof product.stock === 'number' && quantity > product.stock) {
+      invalidQuantities.push({
+        productId: product._id || product.id,
+        name:      product.name,
+        quantity:  item.quantity,
+        reason:    'insufficient_stock',
+        available: product.stock,
+      });
+      return null;
     }
 
     subtotal += trustedPrice * quantity;
@@ -87,6 +110,14 @@ async function revalidateOrderItems(clientItems) {
       message: 'One or more items in your order are no longer available. Please update your cart.',
       priceChanges,
     };
+  }
+
+  if (invalidQuantities.length > 0) {
+    const stockIssues = invalidQuantities.filter(i => i.reason === 'insufficient_stock');
+    const message = stockIssues.length > 0
+      ? `Not enough stock for "${stockIssues[0].name}" (${stockIssues[0].available} available).`
+      : `Invalid quantity for "${invalidQuantities[0].name}". Must be a whole number between 1 and 100.`;
+    return { valid: false, status: 400, message, priceChanges: invalidQuantities };
   }
 
   if (priceChanges.length > 0) {

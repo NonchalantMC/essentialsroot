@@ -73,6 +73,24 @@ const otpVerifyLimiter = rateLimit({
 app.use('/api/orders/guest/send-otp',   otpSendLimiter);
 app.use('/api/orders/guest/verify-otp', otpVerifyLimiter);
 
+// ── Coupon validation limiter ─────────────────────────────────────────────────
+// POST /api/coupons/validate had only the general 200/15min API limiter,
+// which is meant for normal usage, not a discovery-sensitive endpoint. A
+// valid guess here immediately confirms a code exists AND discloses its
+// exact discount value — realistically automatable against short,
+// marketing-style codes. Keyed by IP (unlike the limiters above, there's no
+// victim identity to key on here — the guesser IS the thing being limited).
+// 20/15min is generous for a real customer mistyping a code a few times,
+// tight enough to meaningfully slow down enumeration.
+const couponValidateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { message: 'Too many promo code attempts. Please try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/coupons/validate', couponValidateLimiter);
+
 app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 200 }));
 
 // ── Request logging ───────────────────────────────────────────────────────────
@@ -142,20 +160,10 @@ if (
     });
 }
 
-// ── Firebase Engine Hook ──────────────────────────────────────────────────────
-// Production settings:
-//   memory: 512MB — headroom for image processing and concurrent requests
-//   timeoutSeconds: 60 — covers PesaPal's occasionally slow API responses
-//   maxInstances: 10 — caps runaway scaling costs during unexpected traffic spikes
-//   secrets: values set via `firebase functions:secrets:set <NAME>`, stored in
-//   Secret Manager. Listing them here is what makes them show up as
-//   process.env.<NAME> at runtime — without this array, setting a secret via
-//   the CLI alone does NOT make it accessible to the function.
 exports.api = onRequest({
   memory:         '512MiB',
   timeoutSeconds: 60,
   maxInstances:   10,
-  cors:           true,
   secrets: [
     'JWT_SECRET',
     'PESAPAL_CONSUMER_KEY',

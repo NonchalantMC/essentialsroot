@@ -253,6 +253,16 @@ export default function Checkout() {
 
       const endpoint = isLoggedIn ? '/orders' : '/orders/guest';
       const { data: order }   = await api.post(endpoint, orderPayload);
+
+      // Guests have no session token, so there's nothing to prove identity
+      // with once PesaPal redirects back to PaymentCallback.jsx. Stashing
+      // the verified phone here (tab-scoped, cleared when the tab closes)
+      // lets that page prove it's the same guest when polling payment
+      // status, instead of the status endpoint trusting orderNumber alone.
+      if (!isLoggedIn && guestInfo?.phone) {
+        sessionStorage.setItem('guestOrderPhone', guestInfo.phone);
+      }
+
       const { data: payment } = await api.post('/payments/pesapal/initiate', {
         orderId: order._id || order.id,
         guestInfo,

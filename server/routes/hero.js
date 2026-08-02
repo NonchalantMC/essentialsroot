@@ -2,6 +2,7 @@ const express  = require('express');
 const router   = express.Router();
 const { db }   = require('../config/firebase');
 const { protect, adminOnly } = require('../middleware/auth');
+const { stripUndefinedDeep } = require('../services/FirestoreService');
 
 const HERO_DOC = db.collection('_config').doc('hero');
 
@@ -36,7 +37,7 @@ router.get('/', async (req, res) => {
 // PUT /api/hero — admin only
 router.put('/', protect, adminOnly, async (req, res) => {
   try {
-    const data = { ...req.body, updatedAt: new Date().toISOString() };
+    const data = stripUndefinedDeep({ ...req.body, updatedAt: new Date().toISOString() });
     await HERO_DOC.set(data);
     res.json(data);
   } catch (err) {

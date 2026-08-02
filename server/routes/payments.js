@@ -1,6 +1,7 @@
 const express  = require('express');
 const router   = express.Router();
 const FirestoreService = require('../services/FirestoreService');
+const { admin } = require('../config/firebase');
 const { optionalAuth } = require('../middleware/auth');
 const { submitOrderRequest, getTransactionStatus, mapPaymentStatus } = require('../utils/pesapal');
 const { sendOrderConfirmation } = require('../utils/email');
@@ -31,6 +32,21 @@ async function handlePaid(order, contact) {
     paymentStatus: 'paid',
     statusHistory,
   });
+
+  const batch = admin.firestore().batch();
+  for (const item of order.items || []) {
+    if (!item.productId || !item.quantity) continue;
+    const ref = admin.firestore().collection('products').doc(String(item.productId));
+    batch.update(ref, { stock: admin.firestore.FieldValue.increment(-item.quantity) });
+  }
+  try {
+    await batch.commit();
+  } catch (err) {
+    // Don't let a stock-decrement failure block the payment/order confirmation
+    // that already succeeded — log it for manual reconciliation instead.
+    console.error('Stock decrement failed for order', order.orderNumber, err.message);
+  }
+
   if (contact?.email) {
     const updated = await OrderService.findById(order._id || order.id);
     await sendOrderConfirmation(updated, contact.email, contact.name);
@@ -54,6 +70,20 @@ router.post('/pesapal/initiate', optionalAuth, async (req, res) => {
     const { orderId, guestInfo } = req.body;
     const order = await OrderService.findById(orderId);
     if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    // Tightened: a guest order previously granted access to ANY unauthenticated
+    // caller who knew the orderId — no proof they were the guest who placed
+    // it. Now requires the phone they provide to match the order's own
+    // guestInfo.phone. Checkout.jsx already sends guestInfo in this same
+    // call, right after order creation, so this needs no extra round trip
+    // for the legitimate flow.
+    const requesterId  = req.user?._id || req.user?.id || null;
+    const isAdmin       = req.user?.role === 'admin';
+    const isOwner        = requesterId && order.customerId === requesterId;
+    const isGuestOwner    = !order.customerId && guestInfo?.phone && guestInfo.phone === order.guestInfo?.phone;
+    if (!isAdmin && !isOwner && !isGuestOwner) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
 
     const contact = await getContact(order, req.user, guestInfo);
     const [first, ...rest] = (contact.name || 'Customer').split(' ');
@@ -186,15 +216,18 @@ router.get('/pesapal/status/:orderNumber', optionalAuth, async (req, res) => {
     const order  = orders[0];
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
-    // Ownership check — must be the order's customer or an admin.
-    // Guests without a token are allowed only if the order has no customerId
-    // (i.e. a guest order that was never linked to an account).
+    // Ownership check — must be the order's customer or an admin. Guest
+    // orders now require the caller to supply the phone that matches
+    // guestInfo.phone (sent as ?phone= by PaymentCallback.jsx, stashed in
+    // sessionStorage right after order creation) — previously ANY caller
+    // who knew the orderNumber could poll status for a guest order, no
+    // proof of identity required at all.
     const requesterId = req.user?._id || req.user?.id || null;
     const isAdmin     = req.user?.role === 'admin';
     const isOwner     = requesterId && order.customerId === requesterId;
-    const isGuest     = !order.customerId;
-
-    if (!isAdmin && !isOwner && !isGuest) {
+    const suppliedPhone = req.query.phone;
+    const isGuestOwner   = !order.customerId && suppliedPhone && suppliedPhone === order.guestInfo?.phone;
+    if (!isAdmin && !isOwner && !isGuestOwner) {
       return res.status(403).json({ message: 'Access denied' });
     }
 

@@ -34,6 +34,8 @@ router.post('/image', protect, adminOnly, upload.single('image'), (req, res) => 
     {
       folder:         'essentials256/products',
       transformation: [{ width: 1200, height: 1200, crop: 'limit', quality: 'auto:good' }],
+      
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
     },
     (error, result) => {
       if (error) return res.status(500).json({ message: process.env.NODE_ENV === 'development' ? error.message : 'Image upload failed.' });
