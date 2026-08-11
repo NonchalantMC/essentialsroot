@@ -4,8 +4,8 @@ const FirestoreService = require('../services/FirestoreService');
 const { admin } = require('../config/firebase');
 const { optionalAuth } = require('../middleware/auth');
 const { submitOrderRequest, getTransactionStatus, mapPaymentStatus } = require('../utils/pesapal');
-const { sendOrderConfirmation } = require('../utils/email');
-const { sendOrderPlacedSMS } = require('../utils/sms');
+const { sendOrderConfirmation, notifyAdminOfNewOrder } = require('../utils/email');
+const { sendOrderPlacedSMS, sendSMS } = require('../utils/sms');
 
 const OrderService = new FirestoreService('orders');
 const UserService  = new FirestoreService('users');
@@ -22,7 +22,17 @@ async function getContact(order, reqUser, guestInfo) {
 }
 
 async function handlePaid(order, contact) {
-  if (order.orderStatus !== 'pending') return;
+  // Also accepts 'expired' here, not just 'pending'. server/jobs/
+  // expireStaleOrders.js marks stale unpaid orders as 'expired' after 24h
+  // for admin visibility — but "expired" only means "stop treating this as
+  // an active pending order," not "this can never be paid." If PesaPal ever
+  // confirms payment after that job has already run (a delayed IPN retry,
+  // a slow mobile-money confirmation), this must still complete correctly:
+  // stock decremented, customer notified, order finalized. The only thing
+  // that should ever suppress this is the order having ALREADY been paid
+  // (orderStatus would be 'processing' or later) — never a guess about
+  // how long it's been pending.
+  if (!['pending', 'expired'].includes(order.orderStatus)) return;
   const statusHistory = [
     ...(order.statusHistory || []),
     { status: 'processing', note: 'Payment confirmed via PesaPal', updatedAt: new Date().toISOString() },
@@ -42,26 +52,37 @@ async function handlePaid(order, contact) {
   try {
     await batch.commit();
   } catch (err) {
-    // Don't let a stock-decrement failure block the payment/order confirmation
-    // that already succeeded — log it for manual reconciliation instead.
+
     console.error('Stock decrement failed for order', order.orderNumber, err.message);
   }
 
+  // 1. Customer Email Confirmation
   if (contact?.email) {
     const updated = await OrderService.findById(order._id || order.id);
     await sendOrderConfirmation(updated, contact.email, contact.name);
     console.log(`📧 Confirmation sent → ${contact.email} (${order.orderNumber})`);
   }
-  // Moved here from order creation — that fired for every order regardless
-  // of whether payment ever actually completed, telling customers "your
-  // order has been received" before they'd paid a shilling. This only runs
-  // once, guarded by the orderStatus check above, and only after payment is
-  // genuinely confirmed (this function is only called with newStatus==='paid').
-  const phone = order.shippingAddress?.phone;
+
+  // 2. Customer SMS Confirmation
+  const phone = order.shippingAddress?.phone || order.guestInfo?.phone;
   if (phone) {
     sendOrderPlacedSMS(phone, order.orderNumber, order.total)
       .catch(err => console.error('Order-placed SMS failed:', err.message));
   }
+
+  // 3. Admin Notifications (Email & SMS) — Only fires after payment is confirmed
+  const customerName = contact?.name || 'Customer';
+  const customerPhone = phone || 'N/A';
+
+  if (process.env.ADMIN_PHONE) {
+    sendSMS({
+      to: process.env.ADMIN_PHONE,
+      message: `🎉 Paid Order! ${order.orderNumber} placed by ${customerName} (${customerPhone}) for UGX ${order.total?.toLocaleString()}.`
+    }).catch(err => console.error('Admin SMS alert failed:', err));
+  }
+
+  notifyAdminOfNewOrder(order, customerName, customerPhone)
+    .catch(err => console.error('Admin email alert failed:', err));
 }
 
 // POST /api/payments/pesapal/initiate
@@ -70,13 +91,6 @@ router.post('/pesapal/initiate', optionalAuth, async (req, res) => {
     const { orderId, guestInfo } = req.body;
     const order = await OrderService.findById(orderId);
     if (!order) return res.status(404).json({ message: 'Order not found' });
-
-    // Tightened: a guest order previously granted access to ANY unauthenticated
-    // caller who knew the orderId — no proof they were the guest who placed
-    // it. Now requires the phone they provide to match the order's own
-    // guestInfo.phone. Checkout.jsx already sends guestInfo in this same
-    // call, right after order creation, so this needs no extra round trip
-    // for the legitimate flow.
     const requesterId  = req.user?._id || req.user?.id || null;
     const isAdmin       = req.user?.role === 'admin';
     const isOwner        = requesterId && order.customerId === requesterId;
@@ -106,10 +120,18 @@ router.post('/pesapal/initiate', optionalAuth, async (req, res) => {
       return res.status(400).json({ message: pesapalData.error.message || 'Payment initiation failed' });
     }
 
-    await OrderService.updateById(order._id || order.id, {
+    // A customer retrying payment on an order the cleanup job already
+    // marked 'expired' (they came back after 24h+ and hit "pay" again)
+    // should be treated as active again — they're here, mid-flow, right
+    // now. Otherwise handlePaid()'s guard would still accept it later, but
+    // there's no reason to leave it showing as 'expired' in the admin view
+    // while a real payment attempt is actively in progress.
+    const updates = {
       pesapalOrderId:     pesapalData.order_tracking_id,
       pesapalMerchantRef: pesapalData.merchant_reference,
-    });
+    };
+    if (order.orderStatus === 'expired') updates.orderStatus = 'pending';
+    await OrderService.updateById(order._id || order.id, updates);
 
     res.json({
       redirectUrl:     pesapalData.redirect_url,
@@ -215,13 +237,6 @@ router.get('/pesapal/status/:orderNumber', optionalAuth, async (req, res) => {
     const orders = await OrderService.find({ orderNumber: req.params.orderNumber }, { limit: 1 });
     const order  = orders[0];
     if (!order) return res.status(404).json({ message: 'Order not found' });
-
-    // Ownership check — must be the order's customer or an admin. Guest
-    // orders now require the caller to supply the phone that matches
-    // guestInfo.phone (sent as ?phone= by PaymentCallback.jsx, stashed in
-    // sessionStorage right after order creation) — previously ANY caller
-    // who knew the orderNumber could poll status for a guest order, no
-    // proof of identity required at all.
     const requesterId = req.user?._id || req.user?.id || null;
     const isAdmin     = req.user?.role === 'admin';
     const isOwner     = requesterId && order.customerId === requesterId;

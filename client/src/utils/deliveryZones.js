@@ -1,11 +1,3 @@
-// client/src/utils/deliveryZones.js
-// Keep this file in sync with server/utils/deliveryZones.js
-//
-// Two-level structure: DELIVERY_ZONES[regionKey].areas is an object keyed by
-// area name (not an array) — each area carries its own {fee, km, eta}.
-// Kampala has 40+ real areas with varying fees; every upcountry region has
-// exactly one area (the town itself) at a flat 15,000.
-
 export const DELIVERY_ZONES = {
 
   kampala: {
@@ -116,9 +108,6 @@ export function getDeliveryFee(cityInput, subtotal) {
 
   const match = AREA_INDEX[cityInput.toLowerCase().trim()];
 
-  // The dropdown only ever sends a value straight out of DELIVERY_ZONES, so
-  // this branch means the value was tampered with, or the town list drifted
-  // out of sync — not a case to guess a fee for.
   if (!match) {
     return { fee: 0, label: "Please select a valid town", eta: "—", isEstimated: true, isValid: false };
   }

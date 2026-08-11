@@ -5,6 +5,7 @@ const helmet     = require('helmet');
 const rateLimit  = require('express-rate-limit');
 const functions  = require('firebase-functions'); 
 const { onRequest } = require('firebase-functions/v2/https');
+const { expireStaleOrders } = require('./jobs/expireStaleOrders');
 
 const app = express();
 
@@ -174,3 +175,5 @@ exports.api = onRequest({
     'AT_API_KEY',
   ],
 }, app);
+
+exports.expireStaleOrders = expireStaleOrders;

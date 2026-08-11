@@ -13,7 +13,6 @@ function wrap(body) {
       <div style="font-weight:600;font-size:24px;line-height:1;letter-spacing:-0.5px;">
         <span style="color:#ffffff;font-weight:600;">essentials</span><span style="color:#2C5F2D;font-weight:600;">256</span>
       </div>
-      <div style="font-size:10px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#c9a840;margin-top:8px;">Uganda · Rwanda</div>
     </div>
     ${body}
     <div style="background:#111;padding:24px 40px;text-align:center;">
@@ -65,9 +64,9 @@ async function sendEmail({ to, subject, html }) {
 
 function welcomeEmailHtml(name) {
   return wrap(`<div style="padding:40px;">
-    <h1 style="font-family:Georgia,serif;font-size:28px;color:#2C5F2D;margin:0 0 8px;">Welcome to Essentials256! ✨</h1>
+    <h1 style="font-family:Georgia,semibold;font-size:28px;color:#2C5F2D;margin:0 0 8px;">Welcome to Essentials256! ✨</h1>
     <p style="color:#5a5a5a;font-size:15px;line-height:1.6;margin:0 0 24px;">
-      Hi ${name}, thank you for creating an account with us. We are absolutely thrilled to welcome you to our community of exquisite ladies' footwear and premium home decor.
+      Hi ${name}, thank you for creating an account with us. We are absolutely thrilled to welcome you to our community of exquisite footwear and premium home decor.
     </p>
     <div style="border:2px dashed #c9a840;background:#fffdf6;border-radius:12px;padding:20px;text-align:center;margin:28px 0;">
       <div style="font-size:12px;color:#999;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Your Welcome Gift</div>
@@ -87,7 +86,7 @@ function welcomeEmailHtml(name) {
 
 function adminNewUserHtml(user) {
   return wrap(`<div style="padding:40px;">
-    <h1 style="font-family:Georgia,serif;font-size:22px;color:#141414;margin:0 0 16px;border-bottom:1px solid #f0ede8;padding-bottom:12px;">👤 New User Registered</h1>
+    <h1 style="font-family:Georgia,semibold;font-size:22px;color:#141414;margin:0 0 16px;border-bottom:1px solid #f0ede8;padding-bottom:12px;">👤 New User Registered</h1>
     <p style="color:#5a5a5a;font-size:14px;margin:0 0 20px;">A new customer has successfully registered an account on your store.</p>
     <table style="width:100%;font-size:14px;border-collapse:collapse;background:#faf7f2;border-radius:12px;overflow:hidden;">
       <tr>
@@ -119,7 +118,7 @@ function adminNewOrderHtml(order, customerName, customerPhone) {
     : '';
 
   return wrap(`<div style="padding:40px;">
-    <h1 style="font-family:Georgia,serif;font-size:22px;color:#2C5F2D;margin:0 0 6px;">🛍️ New Order Received</h1>
+    <h1 style="font-family:Georgia,semibold;font-size:22px;color:#2C5F2D;margin:0 0 6px;">🛍️ New Order Received</h1>
     <p style="color:#5a5a5a;font-size:14px;margin:0 0 24px;">Order <strong>${order.orderNumber}</strong> has been placed and is awaiting review.</p>
     <div style="background:#faf7f2;border-radius:12px;padding:16px 20px;margin-bottom:24px;font-size:13px;line-height:1.5;">
       <div style="font-weight:700;margin-bottom:4px;text-transform:uppercase;font-size:11px;color:#999;letter-spacing:0.5px;">Customer Overview</div>
@@ -167,7 +166,7 @@ function orderConfirmationHtml(order, name) {
   const a = order.shippingAddress;
 
   return wrap(`<div style="padding:40px;">
-    <h1 style="font-family:Georgia,serif;font-size:28px;color:#2C5F2D;margin:0 0 8px;">Order Confirmed! 🎉</h1>
+    <h1 style="font-family:Georgia,semibold;font-size:28px;color:#2C5F2D;margin:0 0 8px;">Order Confirmed! 🎉</h1>
     <p style="color:#5a5a5a;font-size:15px;line-height:1.6;margin:0 0 24px;">
       Hi ${name}, thank you for shopping with Essentials256. Your order has been received and is being processed.
     </p>
@@ -214,7 +213,7 @@ function orderConfirmationHtml(order, name) {
 
 function orderShippedHtml(order, name, trackingNumber) {
   return wrap(`<div style="padding:40px;">
-    <h1 style="font-family:Georgia,serif;font-size:28px;color:#2C5F2D;margin:0 0 8px;">Your order is on its way! 🚚</h1>
+    <h1 style="font-family:Georgia,semibold;font-size:28px;color:#2C5F2D;margin:0 0 8px;">Your order is on its way! 🚚</h1>
     <p style="color:#5a5a5a;font-size:15px;line-height:1.6;margin:0 0 24px;">Hi ${name}, your Essentials256 order has been dispatched.</p>
     <div style="background:#e8f2e8;border:1px solid rgba(44,95,45,.2);border-radius:12px;padding:16px 20px;margin-bottom:24px;">
       <div style="font-size:11px;color:#999;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Order Number</div>
@@ -233,7 +232,7 @@ function orderShippedHtml(order, name, trackingNumber) {
 
 function resetPasswordHtml(name, resetUrl) {
   return wrap(`<div style="padding:40px;">
-    <h1 style="font-family:Georgia,serif;font-size:26px;color:#141414;margin:0 0 12px;">Reset Your Password</h1>
+    <h1 style="font-family:Georgia,semibold;font-size:26px;color:#141414;margin:0 0 12px;">Reset Your Password</h1>
     <p style="color:#5a5a5a;font-size:15px;line-height:1.6;margin:0 0 24px;">Hi ${name}, click below to reset your password. This link expires in 1 hour.</p>
     <div style="text-align:center;margin:32px 0;">
       <a href="${resetUrl}" style="display:inline-block;background:#2C5F2D;color:#fff;text-decoration:none;padding:14px 32px;border-radius:100px;font-size:14px;font-weight:600;">Reset Password</a>
@@ -244,7 +243,7 @@ function resetPasswordHtml(name, resetUrl) {
 
 function confirmEmailChangeHtml(name, confirmUrl) {
   return wrap(`<div style="padding:40px;">
-    <h1 style="font-family:Georgia,serif;font-size:26px;color:#141414;margin:0 0 12px;">Confirm Your New Email</h1>
+    <h1 style="font-family:Georgia,semibold;font-size:26px;color:#141414;margin:0 0 12px;">Confirm Your New Email</h1>
     <p style="color:#5a5a5a;font-size:15px;line-height:1.6;margin:0 0 24px;">Hi ${name}, someone requested to change the login email on your Essentials256 admin account to this address. Click below to confirm it. This link expires in 1 hour.</p>
     <div style="text-align:center;margin:32px 0;">
       <a href="${confirmUrl}" style="display:inline-block;background:#2C5F2D;color:#fff;text-decoration:none;padding:14px 32px;border-radius:100px;font-size:14px;font-weight:600;">Confirm New Email</a>

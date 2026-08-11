@@ -4,8 +4,7 @@ const FirestoreService = require('../services/FirestoreService');
 const { admin } = require('../config/firebase');
 const { protect, adminOnly } = require('../middleware/auth');
 const { calculateServerDeliveryFee } = require('../utils/deliveryZones');
-const { sendSMS, sendOtpSMS, sendOrderShippedSMS } = require('../utils/sms');
-const { notifyAdminOfNewOrder } = require('../utils/email');
+const { sendOtpSMS, sendOrderShippedSMS } = require('../utils/sms');
 const { revalidateOrderItems } = require('../utils/orderPricing');
 const { applyCouponToOrder } = require('./coupons');
 
@@ -19,29 +18,10 @@ async function generateOrderNumber() {
   return `E256-${String(next).padStart(6, '0')}`;
 }
 
-// Fires both admin notification channels for a new order — SMS (instant,
-// via Africa's Talking) and email (detailed, via Brevo). Each implementation
-// lives in its own utility (sms.js / email.js); this just calls both so
-// order-creation keeps the same two-channel alert it always has, without
-// either channel being reimplemented here.
-async function alertAdminOfNewOrder(order, customerName, customerPhone) {
-  if (process.env.ADMIN_PHONE) {
-    sendSMS({
-      to: process.env.ADMIN_PHONE,
-      message: `🎉 New Order! ${order.orderNumber} placed by ${customerName} (${customerPhone}) for UGX ${order.total?.toLocaleString()}. Check your admin panel.`
-    }).catch(err => console.error('Admin SMS alert failed:', err));
-  }
-  notifyAdminOfNewOrder(order, customerName, customerPhone)
-    .catch(err => console.error('Admin email alert failed:', err));
-}
-
 // ==========================================
 // GUEST SMS OTP VERIFICATION ENDPOINTS
 // ==========================================
 
-// Failed-guess ceiling per OTP record, on top of the IP/phone-keyed rate
-// limiter in server.js. Defense in depth: even if someone found a way around
-// the request-level limiter, a single OTP record can't be brute-forced.
 const OTP_MAX_ATTEMPTS = 5;
 
 router.post('/guest/send-otp', async (req, res) => {
@@ -51,8 +31,6 @@ router.post('/guest/send-otp', async (req, res) => {
       return res.status(400).json({ message: 'Phone number is required' });
     }
 
-    // Clear any outstanding OTPs for this number first, so only the most
-    // recently sent code is ever valid — avoids stacking up guessable codes.
     const existing = await OtpService.find({ phone }, { limit: 20 });
     await Promise.all(existing.map(r => OtpService.deleteById(r._id || r.id)));
 
@@ -103,20 +81,10 @@ router.post('/guest/verify-otp', async (req, res) => {
       return res.status(400).json({ message: 'Invalid verification code' });
     }
 
-    // Don't delete on success — repurpose this record as short-lived proof
-    // of verification. Previously this was deleted here and the client's
-    // `smsVerified` flag was trusted at face value in the order payload,
-    // which meant POST /orders/guest could be called directly with any
-    // phone number and smsVerified:true hardcoded, never having called this
-    // endpoint at all. That silently defeated the per-customer coupon
-    // dedup in coupons.js, which keys off this same phone number — an
-    // attacker could loop fabricated phone numbers to reuse a single-use
-    // coupon indefinitely. Order creation now looks up and consumes this
-    // record instead of trusting the client's claim.
     await OtpService.updateById(otpRecord._id || otpRecord.id, {
       code: null,
       verified: true,
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 min to complete checkout
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
     });
 
     res.status(200).json({ success: true, message: 'Phone number verified successfully' });
@@ -136,9 +104,6 @@ router.post('/', protect, async (req, res) => {
     const { shippingAddress, couponCode, items } = req.body;
     const userId = req.user._id || req.user.id;
 
-    // Re-price every item against the live product catalog — the client's
-    // submitted price/subtotal is never trusted from here on. Closes the
-    // price-tampering gap where a modified request could set any price.
     const pricing = await revalidateOrderItems(items);
     if (!pricing.valid) {
       return res.status(pricing.status).json({ message: pricing.message, priceChanges: pricing.priceChanges });
@@ -147,10 +112,6 @@ router.post('/', protect, async (req, res) => {
 
     const verifiedDelivery = calculateServerDeliveryFee(shippingAddress?.city, subtotal);
 
-    // Pre-existing gap, closed here: `verifiedDelivery.fee` is `null` for an
-    // unrecognized town, and `null` silently coerces to 0 in the total-fee
-    // arithmetic below — meaning a bad/tampered/unmatched city value used to
-    // result in a real order shipping for free rather than being rejected.
     if (!verifiedDelivery.isValid) {
       return res.status(400).json({ message: 'Please select a valid delivery town from the list.' });
     }
@@ -161,9 +122,6 @@ router.post('/', protect, async (req, res) => {
     const orderNumber = await generateOrderNumber();
 
     if (couponCode) {
-      // All validation, deduplication, discount math, couponType gating,
-      // atomic usage increment, and redemption logging is handled in one
-      // place — coupons.js applyCouponToOrder. Nothing is reimplemented here.
       const couponResult = await applyCouponToOrder(
         couponCode, subtotal, userId, req.user.phone || null, { orderNumber }
       );
@@ -189,19 +147,11 @@ router.post('/', protect, async (req, res) => {
       statusHistory:  [{ status: 'pending', note: 'Order placed', updatedAt: new Date().toISOString() }],
     });
 
-    alertAdminOfNewOrder(order, req.user.name || 'Registered Customer', req.user.phone || 'N/A');
-    // Customer-facing "order received" SMS moved to payments.js handlePaid() —
-    // it now only fires once payment is actually confirmed via PesaPal's IPN,
-    // not at order creation before any payment has happened. The admin alert
-    // above is intentionally left here — you still want to know an order
-    // attempt came in even if payment never completes.
+    // NOTE: Admin alerts and customer notifications are handled strictly in payments.js handlePaid()
+    // after PesaPal confirms payment.
     res.status(201).json(order);
   } catch (err) {
     console.error(err);
-    // err.status is set by applyCouponToOrder/revalidateOrderItems for
-    // expected validation failures — their messages are already safe to
-    // show. Anything without a status is an unexpected error, sanitised
-    // in production the same way as every other route.
     const isKnown = Boolean(err.status);
     const msg = (isKnown || process.env.NODE_ENV === 'development') ? err.message : 'Bad request.';
     res.status(err.status || 400).json({ message: msg });
@@ -213,10 +163,6 @@ router.post('/guest', async (req, res) => {
   try {
     const { guestInfo, shippingAddress, couponCode, items, ...rest } = req.body;
 
-    // Require actual server-side proof of OTP verification — previously
-    // this only checked that `guestInfo.phone` existed, trusting the
-    // client's own `smsVerified` flag with nothing behind it. See the
-    // comment in guest/verify-otp above for the full explanation.
     if (!guestInfo?.phone) {
       return res.status(400).json({ message: 'A verified phone number is required to place a guest order.' });
     }
@@ -225,8 +171,6 @@ router.post('/guest', async (req, res) => {
       return res.status(403).json({ message: 'Please verify your phone number before placing this order.' });
     }
 
-    // Re-price every item against the live product catalog — same trust
-    // boundary applied to guest checkout as authenticated checkout.
     const pricing = await revalidateOrderItems(items);
     if (!pricing.valid) {
       return res.status(pricing.status).json({ message: pricing.message, priceChanges: pricing.priceChanges });
@@ -260,10 +204,6 @@ router.post('/guest', async (req, res) => {
     const orderNumber = await generateOrderNumber();
 
     if (couponCode) {
-      // Same single-source coupon logic as the authenticated route —
-      // applyCouponToOrder requires either resolvedGuestId or a phone
-      // number, so an anonymous guest with no identity anchor can't
-      // apply a coupon at all (closes the unlimited-reuse gap).
       const couponResult = await applyCouponToOrder(
         couponCode, subtotal, resolvedGuestId, guestInfo?.phone || null, { orderNumber }
       );
@@ -291,17 +231,10 @@ router.post('/guest', async (req, res) => {
       statusHistory: [{ status: 'pending', note: 'Guest order placed', updatedAt: new Date().toISOString() }],
     });
 
-    // Consume the verification proof now that it's actually been used to
-    // create an order — a single OTP verification shouldn't be reusable
-    // for unlimited order creations. A failed/abandoned payment on this
-    // order means a fresh OTP is needed to try again, which is the right
-    // tradeoff here: the alternative is a verification that stays valid
-    // for the full 30-minute window regardless of how many orders get
-    // created against it.
     await OtpService.deleteById(verifiedRecord._id || verifiedRecord.id);
 
-    alertAdminOfNewOrder(order, guestInfo?.name || 'Guest Customer', guestInfo?.phone || 'N/A');
-    // Same change as the authenticated order route above — see that comment.
+    // NOTE: Admin alerts and customer notifications are handled strictly in payments.js handlePaid()
+    // after PesaPal confirms payment.
     res.status(201).json(order);
   } catch (err) {
     console.error(err);
@@ -360,12 +293,6 @@ router.patch('/:id/status', protect, adminOnly, async (req, res) => {
 
     const updated = await OrderService.updateById(req.params.id, updates);
 
-    // Stock is decremented once a payment is confirmed (payments.js
-    // handlePaid). Without this, cancelling a paid order would leave that
-    // stock permanently "missing" — decremented for a sale that never
-    // actually shipped. Restore it here, guarded by checking the order
-    // wasn't already cancelled before this update, so a redundant status
-    // change (e.g. admin clicking cancel twice) can't double-restore stock.
     if (orderStatus === 'cancelled' && order.orderStatus !== 'cancelled' && order.paymentStatus === 'paid') {
       const batch = admin.firestore().batch();
       for (const item of order.items || []) {
@@ -380,7 +307,6 @@ router.patch('/:id/status', protect, adminOnly, async (req, res) => {
       }
     }
 
-    // Notify the customer by SMS when admin marks the order as shipped
     if (orderStatus === 'shipped') {
       const customerPhone = order.guestInfo?.phone || order.shippingAddress?.phone || null;
       if (customerPhone) sendOrderShippedSMS(customerPhone, order.orderNumber);
